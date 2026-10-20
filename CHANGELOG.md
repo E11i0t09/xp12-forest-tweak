@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.2.2
-- License changed to **CC BY-NC-SA 4.0**: no commercial use, changes must be shared under the same license. No functional changes. Releases v1.0.0 to v1.2.1 remain available under MIT.
+- Free community project – not for sale. License changed to **CC BY-NC-SA 4.0** with an additional permission: free use for everyone, including companies and flight schools; selling, bundling with paid products, paid downloads and commercial distribution of modified versions are not allowed. No functional changes. Older releases were removed.
 
 ## 1.2.1
 - Renamed to **XP12 Forest Tweak** (it now changes tree height too). Script files, window title and Plugins menu use the new name. The backup folder `ForestDensityTweak`, the Lua file name and the FlyWithLua commands stay the same, so existing tweaks and key bindings keep working.
