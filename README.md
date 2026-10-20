@@ -2,6 +2,8 @@
 
 **Denser, more realistic forests for X-Plane 12 – for vanilla, simHeaven X-World and Global Forests v2. Optionally smaller trees.**
 
+> **Free community project – not for sale.** Free to use for everyone, including companies and flight schools. See [License](#license).
+
 Even with the vegetation slider at maximum, X-Plane 12 forests often look like loose groups of trees instead of a forest. That's because the slider can never go above the density set in the forest definition files (`.for`). This tool lowers the tree spacing in those files, safely and reversibly.
 
 Default factor 0.7 ≈ **twice as many trees per area.**
@@ -129,10 +131,11 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 © E11i0t09 – licensed under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](LICENSE).
 
-- **No commercial use** – you may not sell it, bundle it with paid products or use it commercially in any other way.
-- You may share and adapt it for non-commercial purposes, as long as you give appropriate credit and share your changes under the same license.
+**Additional permission:** anyone – including companies, schools and flight schools – may download and use XP12 Forest Tweak free of charge, also in a commercial environment (e.g. training, simulators, operations).
 
-Releases v1.0.0 to v1.2.1 were published under the MIT License and remain available under it.
+**Not allowed** without written permission: selling or renting it, bundling it with paid products or services, charging for downloads, or distributing modified versions commercially.
+
+You may share and adapt it non-commercially, as long as you give appropriate credit and share your changes under the same license. Copies of v1.0.0 to v1.2.1 obtained before 21 October 2026 were licensed under the MIT License.
 
 ## Disclaimer
 
