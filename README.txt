@@ -85,9 +85,12 @@ and go to 0.8 if needed.
 Use at your own risk. Not affiliated with Laminar Research, simHeaven or
 GeoReality.
 
-LICENSE
--------
-(c) E11i0t09 - Creative Commons Attribution-NonCommercial-ShareAlike 4.0
-(CC BY-NC-SA 4.0), see LICENSE.txt. No commercial use. Changed versions
-must be shared under the same license with credit to the author.
-https://creativecommons.org/licenses/by-nc-sa/4.0/
+FREE COMMUNITY PROJECT - NOT FOR SALE
+-------------------------------------
+Free to use for everyone, including companies and flight schools.
+Not allowed: selling or renting it, bundling it with paid products or
+services, charging for downloads, or distributing modified versions
+commercially. Changed versions may be shared non-commercially under the
+same license, with credit to the author.
+License: (c) E11i0t09 - CC BY-NC-SA 4.0 + additional permission,
+see LICENSE.txt. https://creativecommons.org/licenses/by-nc-sa/4.0/
