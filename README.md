@@ -127,7 +127,10 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-© E11i0t09 – licensed under [Creative Commons Attribution 4.0 International (CC BY 4.0)](LICENSE). You may share and adapt it, also commercially, as long as you give appropriate credit.
+© E11i0t09 – licensed under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](LICENSE).
+
+- **No commercial use** – you may not sell it, bundle it with paid products or use it commercially in any other way.
+- You may share and adapt it for non-commercial purposes, as long as you give appropriate credit and share your changes under the same license.
 
 Releases v1.0.0 to v1.2.1 were published under the MIT License and remain available under it.
 
