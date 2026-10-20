@@ -125,6 +125,12 @@ Inspired by the `.for` spacing approach discussed on the X-Plane.org forums.
 
 See [CHANGELOG.md](CHANGELOG.md).
 
+## License
+
+© E11i0t09 – licensed under [Creative Commons Attribution 4.0 International (CC BY 4.0)](LICENSE). You may share and adapt it, also commercially, as long as you give appropriate credit.
+
+Releases v1.0.0 to v1.2.1 were published under the MIT License and remain available under it.
+
 ## Disclaimer
 
 Use at your own risk. Not affiliated with Laminar Research, simHeaven or GeoReality.
