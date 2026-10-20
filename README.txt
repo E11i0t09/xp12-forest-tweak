@@ -1,4 +1,4 @@
-XP12 Forest Tweak  v1.2.1
+XP12 Forest Tweak  v1.2.2
 =========================
 
 Denser forests for X-Plane 12. The vegetation slider can never exceed the tree
@@ -84,3 +84,10 @@ and go to 0.8 if needed.
 
 Use at your own risk. Not affiliated with Laminar Research, simHeaven or
 GeoReality.
+
+LICENSE
+-------
+(c) E11i0t09 - Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+(CC BY-NC-SA 4.0), see LICENSE.txt. No commercial use. Changed versions
+must be shared under the same license with credit to the author.
+https://creativecommons.org/licenses/by-nc-sa/4.0/
