@@ -1,6 +1,6 @@
 --[[
   ForestDensityToggle.lua  -  in-sim window of XP12 Forest Tweak
-  Version 1.3.0 (2026-10-23)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.4.0 (2026-10-26)   https://github.com/E11i0t09/xp12-forest-tweak
 
   In-sim control of the forest density on top of the tweak, without touching
   any files: a small window with 4 density steps and an overview of the tree
@@ -12,7 +12,8 @@
     The tweak raised the maximum by 1/factor^2 (factor 0.7 -> ~2x trees).
     So:  density = slider value          -> full tweaked density
          density = slider value * f^2    -> about the original density
-    Factors and tree heights are read from <X-Plane>\ForestDensityTweak\backup.log.
+    Factors and tree heights are read from <X-Plane>\ForestDensityTweak\backup.log,
+    the simHeaven hedge setting from hedges.log in the same folder.
     Trees are placed when scenery loads. In the window, pick a step and press
     Apply. With "Reload scenery on apply" ticked, all scenery around you is
     loaded again so the change shows at once (takes a while, like changing
@@ -45,6 +46,7 @@ local RELOAD_COOLDOWN   = 60       -- seconds between two scenery reloads
 local REF_NAME = "sim/private/controls/forest/density"
 local INI_PATH = SCRIPT_DIRECTORY .. "ForestDensityToggle.ini"
 local LOG_PATH = SYSTEM_DIRECTORY .. "ForestDensityTweak" .. DIRECTORY_SEPARATOR .. "backup.log"
+local HEDGE_LOG = SYSTEM_DIRECTORY .. "ForestDensityTweak" .. DIRECTORY_SEPARATOR .. "hedges.log"
 local STEPS    = { "Original", "Low", "Medium", "Dense" }
 
 if XPLMFindDataRef(REF_NAME) == nil then
@@ -54,6 +56,7 @@ end
 
 -- ---------------------------------------------------------------- read the tweak's backup log
 -- info.x / info.h      density and height factor (last entry wins, like the tweak tool)
+-- info.hp              height profile: "uniform" or "realistic" (1.4+)
 -- info.files           tweaked files, info.meshes = files with scaled 3D models
 -- info.typ_o/typ_n     typical min/max height of the main trees (TREE lines), before/after
 -- info.max_o/max_n     tallest tree before/after
@@ -81,7 +84,7 @@ local function tree_heights(arr_text, mins, maxs, only_tree)
 end
 
 local function read_log()
-    local info = { x = nil, h = 1, files = 0, meshes = 0, heights = 0 }
+    local info = { x = nil, h = 1, hp = "uniform", files = 0, meshes = 0, heights = 0 }
     local f = io.open(LOG_PATH, "r")
     if not f then return info end
     local omin, omax, nmin, nmax = {}, {}, {}, {}
@@ -91,6 +94,7 @@ local function read_log()
         if lx then
             info.x = tonumber(lx)
             info.h = tonumber(line:match('"h"%s*:%s*([%d%.]+)') or "1")
+            info.hp = line:match('"hp"%s*:%s*"(%a+)"') or "uniform"
             info.files = info.files + 1
             if line:find('"mb"%s*:%s*true') then info.meshes = info.meshes + 1 end
             local ot = line:match('"ot"%s*:%s*%[(.-)%]')
@@ -110,6 +114,17 @@ local function read_log()
 end
 
 local info = read_log()
+
+-- simHeaven hedges: "enhanced" while hedges.log holds entries (the tool empties it on restore)
+local function read_hedges()
+    local f = io.open(HEDGE_LOG, "r")
+    if not f then return nil end
+    local n = 0
+    for line in f:lines() do if line:find('"nl"') then n = n + 1 end end
+    f:close()
+    return n
+end
+local hedge_files = read_hedges()
 local factor, factor_source = info.x, "backup.log"
 if not factor or factor <= 0 or factor > 1 then factor, factor_source = FALLBACK_FACTOR, "fallback (no backup.log)" end
 local height = info.h or 1
@@ -205,7 +220,7 @@ local CW          = 352            -- content width: everything lines up on this
 local GAP         = 8
 local BTN_W       = math.floor((CW - 3 * GAP) / 4)
 local LABEL_X     = 118            -- value column
-local WIN_W, WIN_H = 380, 310      -- default and minimum window size
+local WIN_W, WIN_H = 380, 330      -- default and minimum window size
 
 local function colored(col, text)
     imgui.PushStyleColor(imgui.constant.Col.Text, col); imgui.TextUnformatted(text); imgui.PopStyleColor()
@@ -242,8 +257,8 @@ function fdt_build(w, x, y)
 
     -- 2) what the tweak set in the files
     imgui.Separator()
-    kv("Density factor", string.format("%.2f", factor) .. (factor_source == "backup.log" and "" or "  (" .. factor_source .. ")"))
-    if height < 1 then kv("Tree height", string.format("%d %%", math.floor(height * 100 + 0.5)), C_GREEN_TXT)
+    kv("Tree spacing", string.format("%.2f", factor) .. (factor_source == "backup.log" and "" or "  (" .. factor_source .. ")"))
+    if height < 1 then kv("Tree height", string.format("%d %%", math.floor(height * 100 + 0.5)) .. (info.hp == "realistic" and "  (realistic profile)" or ""), C_GREEN_TXT)
     else kv("Tree height", "100 % (original)") end
     if height < 1 and info.heights > 0 then
         kv("Typical tree", range(info.typ_o) .. "  ->  " .. range(info.typ_n))
@@ -251,6 +266,10 @@ function fdt_build(w, x, y)
         if info.meshes > 0 then kv("3D models", string.format("scaled (%d files)", info.meshes), C_GREEN_TXT)
         else kv("3D models", "not scaled - re-apply with 1.2", C_WARN_TXT) end
         kv("Undergrowth", "scaled along")
+    end
+    if hedge_files ~= nil then
+        if hedge_files > 0 then kv("Hedges", "enhanced (4-5 m, up to 8 km)", C_GREEN_TXT)
+        else kv("Hedges", "default") end
     end
     colored(C_DIM_TXT, "Change with the tweak tool, X-Plane closed.")
 end
@@ -364,5 +383,5 @@ end
 
 if cfg.visible then open_window() end
 
-logMsg(string.format("ForestDensityToggle 1.3.0: ready (dense %.2f, original %.2f, factor %.2f, height %.2f, %d files, %d with 3D models scaled)",
+logMsg(string.format("ForestDensityToggle 1.4.0: ready (dense %.2f, original %.2f, factor %.2f, height %.2f, %d files, %d with 3D models scaled)",
        dense_value, orig_value(), factor, height, info.files, info.meshes))
