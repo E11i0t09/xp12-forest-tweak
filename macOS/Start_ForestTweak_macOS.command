@@ -10,5 +10,8 @@ if ! /usr/bin/env python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' 2
     exit 1
 fi
 python3 xp12_forest_tweak.py "$@"
-echo
-read -r -p "Press Enter to close."
+# keep the window open only after an error, so the message can be read
+if [ $? -ne 0 ]; then
+    echo
+    read -r -p "Press Enter to close."
+fi
