@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.0
+- **One Windows tool:** `Start_ForestTweak.bat` replaces the two editions. It finds Global Forests v2 and asks whether to include it, like the macOS/Linux version. Existing tweaks keep working (same backup log).
+- **Presets for the tree spacing:** *Natural* 0.8, *Dense* 0.7 (recommended), *Very dense* 0.6 or *Custom*. Clearer wording: "tree spacing – lower = closer trees = denser forest". Input like `0,7` or `70` is accepted.
+- **Realistic height profile (optional):** below height factor 1.0 you choose *uniform* or *realistic*. Realistic: conifers shrink less, palms a bit less, shrubs/orchards hardly (e.g. 0.8 → conifers 0.88, shrubs 0.9).
+- **Global Forests v2 cropland:** field trees and hedgerows between fields get an extra spacing factor 0.8, so field edges fill more evenly. A tweak from an older version is updated by running *Choose settings* once.
+- **New menu item Check & repair:** checks the 3D model backups, removes leftovers of an interrupted run, unused backups and empty folders, cleans up the log.
+- **Safer backups:** SHA-256 checksum for every 3D model backup, checked before a restore. A damaged backup is never used; the file stays tweaked and is never scaled twice. Free disk space is checked before every write. The backup log is kept compact (one line per file).
+- **Helpful hints:** one-line status at start; warnings if the vegetation slider is not at maximum, if Global Forests v2 is disabled in `scenery_packs.ini` or active but not tweaked, and for untested X-Plane versions; *Status* lists other scenery with its own forests (e.g. Orbx TrueEarth); hint when a new version is on GitHub (max. 3 s, display only).
+- Changes are blocked while X-Plane is running. The summary shows an estimated time, the progress the remaining time; Ctrl+C stops cleanly with a clear message; "Done!" message at the end; the window only stays open after an error.
+- macOS/Linux: 3D tree models are scaled on several CPU cores (noticeably faster on multi-core computers).
+- `ForestDensityTweak/tool.log` records what the tool did (for bug reports).
+- In-sim window: shows the height profile and the simHeaven hedge setting.
+- README: new section *I don't see a difference* (vegetation slider, forest data of the scenery, other add-ons).
+
 ## 1.3.0
 - **macOS and Linux:** new Python version (`xp12_forest_tweak.py`, needs Python 3.8+, no extra packages) with starters for macOS (`Start_ForestTweak_macOS.command`) and Linux (`start_forest_tweak_linux.sh`). Same logic as the Windows version, byte-identical results, same backup log.
 - **Shared backup log across systems:** the Windows version now also reads log entries written on macOS/Linux, so a tweak can be restored from either system (e.g. dual boot with one X-Plane folder).
