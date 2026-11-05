@@ -1,5 +1,6 @@
 #!/bin/bash
 # XP12 Forest Tweak - macOS starter (double-click in Finder)
+# (c) E11i0t09. Free community project, not for sale. License: CC BY-NC-SA 4.0 with additional permission (free use also for companies and flight schools), see the LICENSE file.
 cd "$(dirname "$0")" || exit 1
 if ! /usr/bin/env python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' 2>/dev/null; then
     echo "Python 3.8 or newer is needed."
