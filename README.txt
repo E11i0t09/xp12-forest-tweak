@@ -1,4 +1,4 @@
-XP12 Forest Tweak  v1.4.0
+XP12 Forest Tweak  v1.4.1
 =========================
 
 Denser forests and optionally smaller trees (3D trees included) for X-Plane 12.
@@ -15,11 +15,11 @@ Do not copy it into Resources/plugins. No renaming needed.
 DOWNLOADS / FOLDERS
 -------------------
 Download the ZIP for your system - each one contains everything you need:
-  XP12_ForestTweak_v1.4.0_Windows.zip  (folder Windows/ in the repository)
+  XP12_ForestTweak_v1.4.1_Windows.zip  (folder Windows/ in the repository)
       Start_ForestTweak.bat            (double-click), no admin rights needed
-  XP12_ForestTweak_v1.4.0_macOS.zip    (folder macOS/)
+  XP12_ForestTweak_v1.4.1_macOS.zip    (folder macOS/)
       Start_ForestTweak_macOS.command  (double-click), needs Python 3.8+
-  XP12_ForestTweak_v1.4.0_Linux.zip    (folder Linux/)
+  XP12_ForestTweak_v1.4.1_Linux.zip    (folder Linux/)
       start_forest_tweak_linux.sh      (sh start_forest_tweak_linux.sh), Python 3.8+
   FlyWithLua/ForestDensityToggle.lua (optional in-sim window, in every ZIP)
 
@@ -46,6 +46,7 @@ HOW TO USE
           Values can be typed as 0.7, 0,7 or 70.
           Global Forests v2 cropland forests (field trees, hedgerows) get an
           extra factor 0.8, e.g. 0.7 -> 0.56, so field edges fill more evenly.
+          Sparse Global Forests v2 areas get extra trees, dense areas stay.
   Step 2  Tree height 0.5 - 1.0 (1.0 = original, 0.8 = 20 % smaller).
           The 3D tree models are scaled too. This rewrites the files
           and keeps a compressed backup of the originals (with checksum) in
@@ -54,7 +55,12 @@ HOW TO USE
             uniform    every tree gets the same factor
             realistic  conifers shrink less (0.8 -> 0.88), palms 0.84,
                        shrubs/orchards 0.9, broadleaf 0.8
-  Step 4  simHeaven hedges default or enhanced (only with simHeaven X-World).
+  Step 4  simHeaven hedges (only with simHeaven X-World): default, enhanced, or
+          Knicks - in the Knick areas (SH, HH, NW Lower Saxony, W Mecklenburg,
+          Denmark) hedges become Knicks (bushes and single trees), tree rows
+          mixed trees and scrub denser bushes; elsewhere
+          enhanced. The tool creates Custom Scenery/XP12_ForestTweak_Knicks and
+          lists it above simHeaven in scenery_packs.ini; Restore removes both.
   To change values later, just run Choose settings again.
   The summary shows an estimated time. With tree height and Global Forests
   v2 it can take 10 minutes or more.
@@ -106,7 +112,8 @@ bug reports.
 IN-SIM WINDOW (OPTIONAL)
 ------------------------
 ForestDensityToggle.lua adds a small window to switch the forest density in
-4 steps during flight. Needs FlyWithLua NG+ and the tweak applied.
+steps during flight (1.0x to 2.8x as many trees as original, up to the tool
+setting). Needs FlyWithLua NG+ and the tweak applied.
 
   1. Copy FlyWithLua/ForestDensityToggle.lua to
      X-Plane 12/Resources/plugins/FlyWithLua/Scripts/
@@ -119,6 +126,8 @@ Pick a step and press Apply. The new density applies to scenery that loads
 as you fly on. With "Reload scenery on apply" ticked, X-Plane loads all
 scenery around you again so it shows at once - that takes a while. The window
 also shows the tree height, height profile and hedge setting of the tweak.
+The chosen step is remembered and set again at the next sim start
+(without reload, so it applies to scenery loaded from then on).
 
 
 PERFORMANCE

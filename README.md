@@ -22,6 +22,16 @@ Autumn, wide view over a hilly forest region: the original forests show ground b
 |---|---|
 | ![Original X-Plane 12 autumn forest from altitude: trees with visible ground in between](screenshots/before_autumn.jpg) | ![Forest Tweak applied: closed autumn forest canopy over the same area](screenshots/after_autumn.jpg) |
 
+Dense autumn forest with the tweak applied.
+
+![Forest Tweak applied: dense mixed autumn forest along a motorway](screenshots/autumn_forest.jpg)
+
+Knicks option in northern Germany: hedges and tree rows become Knicks with bushes and single trees.
+
+| Knicks near the ground | Knicks from the air |
+|---|---|
+| ![Knicks option: rows of bushes with single trees between the fields](screenshots/knicks.jpg) | ![Knicks option from a Cessna: field pattern framed by Knicks](screenshots/knicks_air.jpg) |
+
 In-sim window (`ForestDensityToggle.lua`): density steps, scenery reload option and the tree height set by the tweak.
 
 ![Forest Tweak window in X-Plane 12 over a dense forest slope](screenshots/window.jpg)
@@ -35,14 +45,15 @@ In-sim window (`ForestDensityToggle.lua`): density steps, scenery reload option 
 - **Presets for the tree spacing:** *Natural* 0.8, *Dense* 0.7 (recommended), *Very dense* 0.6, or your own value from 0.4 to 1.0
 - **Optional tree height:** factor 0.5 – 1.0, with a *uniform* or *realistic* height profile. The 3D tree models are scaled too, so near and far trees match
 - **Global Forests v2 cropland:** field trees and hedgerows between fields get an extra factor 0.8, so field edges are filled more evenly
-- **Optional: taller simHeaven hedges (Knicks)**, *default* or *enhanced*, see below
+- **Fuller sparse forests (Global Forests v2):** sparse forest areas get extra trees, dense areas stay as they are
+- **Optional: simHeaven hedges** *default*, *enhanced* (taller) or **Knicks** – real-looking Knicks with bushes and trees in northern Germany and Denmark, see below
 - **Fully reversible:** the original values are logged and restored byte-for-byte; 3D model backups are protected by a checksum
 - **Quick to reapply after updates:** reset files are detected and tweaked again, already tweaked files are skipped
 - **Never applied twice:** all versions share one backup log
 - **Grass, shrubs and hedges are left alone:** only files with a spacing above 3.1 m are changed
 - **Safe if interrupted:** every change is logged before the file is swapped in; Ctrl+C or a full disk stops cleanly
 - **Helpful checks at start:** vegetation slider not at maximum, Global Forests v2 disabled in `scenery_packs.ini` or active but not tweaked, X-Plane running, untested X-Plane version, new tool version available
-- **Optional in-sim window:** a small FlyWithLua script switches the forest density in 4 steps during flight, see below
+- **Optional in-sim window:** a small FlyWithLua script switches the forest density during flight, from original up to the tool setting (1.0x · 1.25x · 1.5x · 1.8x · 2.0x · 2.5x · 2.8x as many trees), see below
 
 ## Installation & usage
 
@@ -100,6 +111,8 @@ Values can be typed as `0.7`, `0,7` or `70`.
 
 **Global Forests v2 cropland:** the *cropland* forests of GFv2 (single trees and hedgerows between fields) get an extra factor 0.8, e.g. spacing 0.7 → 0.56 there. This fills field edges more evenly without making the real forests even denser.
 
+**Fuller sparse forests (Global Forests v2):** GFv2 sorts every forest area by satellite data into one of four density steps, from very sparse to very dense. The very sparse areas get almost twice as many trees as before, the sparse ones a few more, the dense ones stay as they are. A sparse forest still looks lighter than a dense one, but no longer empty. This is always on when Global Forests v2 is included.
+
 ### Tree height (optional)
 
 | Height factor | Effect |
@@ -129,10 +142,13 @@ simHeaven X-World draws hedges from OpenStreetMap, for example the typical *Knic
 
 Step 4 of *Choose settings* switches them between:
 
-| Setting | Height | Visible up to |
+| Setting | Hedges | Visible up to |
 |---|---|---|
 | **default** | 2.2–2.8 m | 4 km |
 | **enhanced** | about 4–5 m | 8 km |
+| **Knicks** | Knick areas in Germany and Denmark: Knicks with bushes and single trees, tree rows with mixed trees, denser scrub. Elsewhere: *enhanced* | 8–10 km |
+
+**Knicks:** in the Knick and Wallhecken areas – Schleswig-Holstein, Hamburg, north-west Lower Saxony (Ostfriesland, Oldenburger Land, Elbe-Weser, Emsland, Osnabrück-Nord, Heidekreis), west Mecklenburg and Denmark – the simHeaven hedges become typical Knicks (a dense row of bushes with single oaks, ashes and maples), the simHeaven tree rows get mixed trees with bushes in between, and scrub areas (often narrow Knick strips in OpenStreetMap) get dense bushes with a few small trees. X-Plane can only limit this to whole 1×1° tiles, so some neighbouring areas are included too (e.g. Hannover, Rostock, western Skåne). The tool creates a small library for this in `Custom Scenery/XP12_ForestTweak_Knicks` (the trees are copied from the X-Plane default forests, about 12 MB) and lists it above simHeaven in `scenery_packs.ini` (a backup is kept in `ForestDensityTweak`). Knicks and tree rows follow your tree height factor. simHeaven files are not changed for this; *Restore original* removes the folder and the line again. Knicks only appear where OpenStreetMap has hedges or tree rows – missing ones are not added.
 
 Only the hedge files of the *simHeaven X-World Vegetation Library* are changed; the original lines are logged in `ForestDensityTweak/hedges.log` and restored exactly when you switch back. You can change it on its own by keeping the other values. Hedges are simple 2D billboards, so the cost is small, but in hedge-rich regions there are a lot of them. Not shown without simHeaven X-World. After a simHeaven update, run *Choose settings* again and confirm.
 
@@ -148,11 +164,11 @@ The tool raises the maximum density in the forest files. What you see is still l
 
 ## In-sim window (optional)
 
-Switch the density in flight in 4 steps and see the tree height, height profile and hedge setting set by the tweak. Needs the tweak applied and [FlyWithLua NG+](https://github.com/X-Friese/FlyWithLua).
+Switch the density in flight and see the tree height, height profile and hedge setting set by the tweak. The buttons show how many trees compared to the original: 1.0x · 1.25x · 1.5x · 1.8x · 2.0x · 2.5x · 2.8x (rounded). Steps above the tool setting are greyed out – the window can only show up to what the tool wrote into the forest files (0.7 = 2.0x, 0.6 = 2.8x). Needs the tweak applied and [FlyWithLua NG+](https://github.com/X-Friese/FlyWithLua).
 
 1. Copy `FlyWithLua/ForestDensityToggle.lua` from the ZIP to `X-Plane 12/Resources/plugins/FlyWithLua/Scripts/`
 2. In the sim: *Plugins → Forest Tweak → Show / hide window* (fallback: *Plugins → FlyWithLua → FlyWithLua Macros → Forest Tweak: window*)
-3. Pick a step and press **Apply**. With *Reload scenery on apply* ticked it shows at once (the reload takes a while), otherwise on scenery loaded as you fly on.
+3. Pick a step and press **Apply**. With *Reload scenery on apply* ticked it shows at once (the reload takes a while), otherwise on scenery loaded as you fly on. The chosen step is remembered and set again at the next sim start (without reload).
 
 Key bindings: search `ForestDensity` in the keyboard settings.
 
@@ -160,7 +176,7 @@ Key bindings: search `ForestDensity` in the keyboard settings.
 
 - **Tree spacing:** `SPACING` (tree distance) and `RANDOM` in each `.for` file are multiplied by the factor. The vegetation slider can never go above this value.
 - **Height:** min/max height in each file's tree list is multiplied by the factor (per forest type with the *realistic* profile). The 3D models are scaled to match.
-- **Changed folders:** `Resources/default scenery/1200 forests`, plus `Custom Scenery/Global_Forests_v2` if you include it. Hedges option: `Custom Scenery/simHeaven_X-World_Vegetation_Library` (hedge files only). simHeaven X-World links its forests to the default forest files, so they are covered too.
+- **Changed folders:** `Resources/default scenery/1200 forests`, plus `Custom Scenery/Global_Forests_v2` if you include it. Hedges option: `Custom Scenery/simHeaven_X-World_Vegetation_Library` (hedge files only). Knicks option: own folder `Custom Scenery/XP12_ForestTweak_Knicks` plus one line in `scenery_packs.ini`. simHeaven X-World links its forests to the default forest files, so they are covered too.
 - **Backup:** original values in `<X-Plane 12>/ForestDensityTweak/backup.log`. **Keep this folder while the tweak is active.**
 - **Tool log:** `ForestDensityTweak/tool.log` lists what the tool did – please attach it to bug reports.
 - **Update check:** at start the tool asks GitHub for the latest release (max. 3 s, nothing is sent, silent if offline). It only shows a hint, it never downloads anything.
@@ -177,7 +193,7 @@ More trees means more GPU work, especially when flying low over large forests. C
 ## Compatibility
 
 - Tested with **X-Plane 12.4.x** and FlyWithLua NG 2.8.12. Windows, macOS and Linux versions produce byte-identical results (checked on real forest files of X-Plane and Global Forests v2).
-- Backup logs of all earlier versions keep working. Running *Choose settings* once applies the 1.4 improvements (GFv2 cropland) to a tweak made with an older version.
+- Backup logs of all earlier versions keep working. Running *Choose settings* once applies the latest improvements (GFv2 cropland and sparse forests) to a tweak made with an older version.
 - The `.for` format and the `SPACING` command are documented in Laminar's [forest file format specification](https://developer.x-plane.com/article/forest-for-file-format-specification).
 - Forests from other add-ons are not touched.
 
@@ -185,9 +201,9 @@ More trees means more GPU work, especially when flying low over large forests. C
 
 | Folder | Content | Download |
 |---|---|---|
-| `Windows/` | `Start_ForestTweak.bat` + `XP12_ForestTweak.ps1` | `XP12_ForestTweak_v1.4.0_Windows.zip` |
-| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.4.0_macOS.zip` |
-| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.4.0_Linux.zip` |
+| `Windows/` | `Start_ForestTweak.bat` + `XP12_ForestTweak.ps1` | `XP12_ForestTweak_v1.4.1_Windows.zip` |
+| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.4.1_macOS.zip` |
+| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.4.1_Linux.zip` |
 | `FlyWithLua/` | `ForestDensityToggle.lua` (in-sim window, all systems) | included in every ZIP |
 
 Download the ZIP for your system from [Releases](../../releases) – each one contains everything you need.

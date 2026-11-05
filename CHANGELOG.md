@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1
+- **Knicks (optional):** new choice *[3] Knicks* in the hedge step. In northern Germany and Denmark the flat simHeaven hedges become real Knicks: dense bushes with single trees, tree rows with mixed trees, denser scrub. Elsewhere the hedges are *enhanced*. Knicks follow the tree height setting and are removed completely by *Restore original*.
+- **Fuller sparse forests (Global Forests v2):** sparse forest areas get more trees, dense areas stay as they are.
+- **In-sim window:** buttons show how many trees compared to the original (1.0x up to 2.8x), steps above the tool setting are greyed out. The window remembers the chosen step and sets it again at the next sim start.
+- *Check & repair* also checks the Knicks.
+
 ## 1.4.0
 - **One Windows tool:** `Start_ForestTweak.bat` replaces the two editions. It finds Global Forests v2 and asks whether to include it, like the macOS/Linux version. Existing tweaks keep working (same backup log).
 - **Presets for the tree spacing:** *Natural* 0.8, *Dense* 0.7 (recommended), *Very dense* 0.6 or *Custom*. Clearer wording: "tree spacing – lower = closer trees = denser forest". Input like `0,7` or `70` is accepted.
