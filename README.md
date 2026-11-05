@@ -32,9 +32,9 @@ Knicks option in northern Germany: hedges and tree rows become Knicks with bushe
 |---|---|
 | ![Knicks option: rows of bushes with single trees between the fields](screenshots/knicks.jpg) | ![Knicks option from a Cessna: field pattern framed by Knicks](screenshots/knicks_air.jpg) |
 
-In-sim window (`ForestDensityToggle.lua`): density steps, scenery reload option and the tree height set by the tweak.
+In-sim window (`ForestDensityToggle.lua`): density from 1.0x to 2.8x as many trees as the original, scenery reload option and the settings of the tweak.
 
-![Forest Tweak window in X-Plane 12 over a dense forest slope](screenshots/window.jpg)
+![Forest Tweak window in X-Plane 12 with density buttons 1.0x to 2.8x over a dense forest slope](screenshots/window.jpg)
 
 ---
 
