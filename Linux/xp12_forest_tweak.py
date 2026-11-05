@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 XP12 Forest Tweak - macOS / Linux version
-Version 1.4.0
+Version 1.4.1
 
 Denser forests and optionally smaller trees for X-Plane 12.
 Same logic and same backup log as the Windows (PowerShell) version, so a tweak made
@@ -12,7 +12,8 @@ What it does
   (0.7 = about twice as many trees per area). The vegetation slider in X-Plane can never
   go above the density set there.
 - Global Forests v2 "cropland" forests (field trees and hedgerows between fields) get an
-  extra factor of 0.8 on top, so field edges are filled more evenly.
+  extra factor of 0.8 on top, so field edges are filled more evenly. Sparse Global Forests v2
+  forests (density classes 25 and 50) get an extra 0.75 / 0.85, so they look less empty.
 - Files with SPACING <= 3.1 m (grass, shrubs, hedges) are left untouched.
 - Optional tree height factor (0.5 - 1.0): min and max height of every tree are scaled.
   "realistic" profile: conifers shrink less, palms a bit less, shrubs/orchards hardly.
@@ -22,7 +23,11 @@ What it does
   <X-Plane>/ForestDensityTweak/mesh_backup for an exact restore.
 - Every original line is logged in <X-Plane>/ForestDensityTweak/backup.log, so
   "Restore original" puts back the exact original values.
-- Optional: simHeaven hedges "default" or "enhanced" (about 4-5 m high, visible up to 8 km).
+- Optional: simHeaven hedges "default", "enhanced" (about 4-5 m high, visible up to 8 km) or
+  "Knicks": in northern Germany and Denmark the hedges become Knicks (bushes plus single trees) and
+  the tree rows mixed tree rows. For this the tool creates a small library in
+  Custom Scenery/XP12_ForestTweak_Knicks (textures copied from the X-Plane default forests) and lists
+  it above simHeaven in scenery_packs.ini (backup kept). simHeaven files are not changed for it.
 - Actions are written to <X-Plane>/ForestDensityTweak/tool.log (helpful for bug reports).
 
 Needs only Python 3.8 or newer, no extra packages.
@@ -44,7 +49,7 @@ import time
 from collections import Counter
 from decimal import Decimal, ROUND_HALF_UP
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 TESTED_XP = (12, 4)      # X-Plane version the tool was tested with
 REPO = "E11i0t09/xp12-forest-tweak"
 THRESHOLD = 3.1          # files with a smaller tree spacing are grass/shrubs/hedges -> kept
@@ -55,6 +60,8 @@ DEFAULT_FAC = 0.7        # preset [2]
 MIN_FAC = 0.4
 MIN_HEIGHT = 0.5         # lowest allowed height factor
 CROP_FAC = 0.8           # extra spacing factor for Global Forests v2 cropland forests
+SPARSE_FAC = {"25": 0.75, "50": 0.85}   # extra spacing factor for sparse Global Forests v2 density classes
+SPARSE_RX = re.compile(r"_(25|50)_y\d+\.for$")
 TWEAK_DIR = "ForestDensityTweak"   # folder name kept from earlier versions (shared with Windows)
 HEDGE_FAC = 1.8          # simHeaven hedges "enhanced": 2.2-2.8 m -> about 4-5 m (typical Knick height)
 HEDGE_LOD = 8000         # simHeaven hedges "enhanced": visible up to 8 km instead of 4 km
@@ -306,7 +313,7 @@ def other_forest_addons(xp):
     out = []
     for name in sorted(os.listdir(os.path.join(xp, "Custom Scenery"))):
         low = name.lower()
-        if not os.path.isdir(os.path.join(xp, "Custom Scenery", name)) or low.startswith(("simheaven", "global_forests", "global forests")):
+        if not os.path.isdir(os.path.join(xp, "Custom Scenery", name)) or low.startswith(("simheaven", "global_forests", "global forests", KNICK_DIR.lower())):
             continue
         if OTHER_FOREST_RX.search(name) and packs.get(low, True):
             out.append(name)
@@ -592,7 +599,14 @@ def height_weight(r):
 
 def effective(r, x, h, hp):
     """(spacing factor, height factor) actually used for one file."""
-    xe = rnd(x * CROP_FAC, 4) if x < 1.0 and "/cropland/" in norm(r).lower() else x
+    rl = norm(r).lower()
+    f = 1.0
+    if x < 1.0 and "/cropland/" in rl:
+        f *= CROP_FAC
+    m = SPARSE_RX.search(rl) if x < 1.0 and rl.startswith("custom scenery/") else None
+    if m:
+        f *= SPARSE_FAC[m.group(1)]
+    xe = rnd(x * f, 4) if f != 1.0 else x
     he = h
     if h < 1.0 and hp == "realistic":
         he = rnd(1.0 - (1.0 - h) * height_weight(r), 4)
@@ -726,7 +740,7 @@ def status_line(st, hstate):
         elif st["n_orig"]:
             s += f" - {st['n_orig']} files not tweaked"
         elif st["n_old"]:
-            s += " - run Choose settings once to apply the 1.4 improvements"
+            s += " - run Choose settings once to apply the latest improvements"
     if hstate:
         s += f" | hedges {hstate}"
     return s
@@ -1100,6 +1114,196 @@ def hedges_restore(xp, files, log):
     say(f"  simHeaven hedges back to default: {done} files", C_GREEN)
 
 
+# ---------------------------------------------------------------- Knicks (northern Germany / Denmark)
+# Own small library that replaces the simHeaven hedges (OSM barrier=hedge) and tree rows
+# (OSM natural=tree_row) and scrub only in KNICK_RECTS with Knicks: bushes plus single trees. Uses the
+# X-Plane default tree billboards (copied, they may not be shipped) and the same XP12 shader
+# settings as the default forests. simHeaven files are not changed for it.
+KNICK_DIR = "XP12_ForestTweak_Knicks"
+KNICK_MARK = "# generated by XP12 Forest Tweak"
+# Knick / Wallhecken areas, whole 1x1 degree tiles "west south east north" (south-west corners):
+# Schleswig-Holstein (everywhere), Niedersachsen (Ostfriesland, Oldenburg, Elbe-Weser, Emsland,
+# Osnabrueck-Nord, Heidekreis - NLWKN), West-Mecklenburg (LUNG), Hamburg, Denmark (diger, hegn).
+KNICK_RECTS = ("7 52 9 52", "7 53 11 53", "8 54 12 54", "8 55 12 55", "14 55 14 55", "8 56 11 57")
+KNICK_AREA = "Schleswig-Holstein, Hamburg, north-west Lower Saxony, west Mecklenburg, Denmark"
+KNICK_SEASONS = (("spr", "trees_bb1_ALB_sp", "trees_bb1_ALB", "trees_bb1_SM"),
+                 ("sum", "trees_bb1_ALB", "trees_bb1_ALB_fa", "trees_bb1_SM"),
+                 ("fal", "trees_bb1_ALB_fa", "trees_bb1_ALB_wi", "trees_bb1_SM"),
+                 ("win", "trees_bb1_ALB_wi", "trees_bb1_ALB_sp", "trees_bb1_SM_wi"))
+KNICK_TEXTURES = ("trees_bb1_ALB", "trees_bb1_ALB_sp", "trees_bb1_ALB_fa", "trees_bb1_ALB_wi",
+                  "trees_bb1_NML", "trees_bb1_SM", "trees_bb1_SM_wi")
+#   s     t     w    h    off  freq min  max   kind  name   (kind b = bush, t = tree)
+KNICK_HEDGE = ((224, 2848, 118, 124, 59, 23, 4, 6, "b", "decid_03"),
+               (1900, 2848, 128, 124, 64, 23, 4, 6, "b", "sorbus_07"),
+               (1792, 2848, 108, 124, 54, 23, 4, 5.5, "b", "lilac_06"),
+               (332, 2080, 110, 124, 55, 23, 4.5, 6, "b", "locust_01"),
+               (880, 3584, 170, 252, 85, 2, 12, 18, "t", "oak1_07"),
+               (1050, 3584, 104, 252, 52, 2, 13, 18, "t", "oak1_08"),
+               (1452, 3584, 190, 252, 95, 2, 12, 17, "t", "ash_07"),
+               (776, 2976, 184, 252, 92, 2, 12, 16, "t", "maple_07"))
+KNICK_ROW = ((880, 3584, 170, 252, 85, 8, 12, 20, "t", "oak1_07"),
+             (1050, 3584, 104, 252, 52, 8, 12, 18, "t", "oak1_08"),
+             (1154, 3584, 128, 252, 64, 7, 12, 19, "t", "oak1_09"),
+             (1452, 3584, 190, 252, 95, 7, 11, 18, "t", "ash_07"),
+             (776, 2976, 184, 252, 92, 6, 10, 16, "t", "maple_07"),
+             (250, 2592, 208, 252, 104, 6, 11, 17, "t", "elm_05"),
+             (294, 3584, 118, 252, 59, 5, 10, 15, "t", "birch_07"),
+             (1296, 2976, 110, 252, 55, 4, 11, 17, "t", "aspen_05"),
+             (0, 2976, 208, 252, 104, 4, 12, 18, "t", "redoak_04"),
+             (224, 2848, 118, 124, 59, 15, 4, 6, "b", "decid_03"),
+             (1900, 2848, 128, 124, 64, 15, 4, 6, "b", "sorbus_07"),
+             (1792, 2848, 108, 124, 54, 15, 4, 5.5, "b", "lilac_06"))
+# scrub areas (OSM natural=scrub, often narrow Knick strips): dense bushes 2-6 m, a few small trees
+KNICK_SCRUB = ((224, 2848, 118, 124, 59, 25, 2.5, 5, "b", "decid_03"),
+               (1900, 2848, 128, 124, 64, 24, 2, 4.5, "b", "sorbus_07"),
+               (1792, 2848, 108, 124, 54, 24, 2, 4, "b", "lilac_06"),
+               (332, 2080, 110, 124, 55, 24, 3, 6, "b", "locust_01"),
+               (294, 3584, 118, 252, 59, 2, 6, 10, "s", "birch_07"),
+               (1296, 2976, 110, 252, 55, 1, 6, 10, "s", "aspen_05"))
+KNICK_KINDS = (("knick", "Knick: dense row of bushes plus single trees about every 10 m",
+                "0.8", "0.8", "8000", KNICK_HEDGE, "simheaven/forests/hedge.for"),
+               ("treerow", "Knick tree row: mixed broadleaf trees plus bushes in between",
+                "2.5", "1.2", "10000", KNICK_ROW, "simheaven/forests/random_tree.for"),
+               ("scrub", "Knick scrub: dense bushes 2-6 m with a few small trees",
+                "3", "1.5", "8000", KNICK_SCRUB, "simheaven/forests/shrubs.for"))
+
+
+def knick_path(xp):
+    return os.path.join(xp, "Custom Scenery", KNICK_DIR)
+
+
+def knick_info(xp):
+    """(active, height, profile) of a library generated by this tool, else (False, None, None)."""
+    try:
+        with open(os.path.join(knick_path(xp), "library.txt"), encoding="latin-1") as f:
+            for line in f.read(2000).splitlines():
+                m = re.match(re.escape(KNICK_MARK) + r".*\|\s*height\s+([0-9.]+)\s+(\w+)", line)
+                if m:
+                    return True, float(m.group(1)), m.group(2)
+    except OSError:
+        pass
+    return False, None, None
+
+
+def knick_texture_src(xp, name):
+    tex = os.path.join(xp, "Resources", "default scenery", "1200 forests", "textures")
+    for ext in (".dds", ".png"):
+        p = os.path.join(tex, name + ext)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def scenery_ini(xp):
+    return os.path.join(xp, "Custom Scenery", "scenery_packs.ini")
+
+
+def ini_write(xp, lines, nl):
+    """Writes scenery_packs.ini via a temp file, after one backup per day in ForestDensityTweak."""
+    p = scenery_ini(xp)
+    bk = os.path.join(tweak_dir(xp), "scenery_packs.ini.backup-" + time.strftime("%Y%m%d"))
+    if os.path.exists(p) and not os.path.exists(bk):
+        shutil.copy2(p, bk)
+    write_bytes(p, (nl.join(lines)).encode("utf-8"))
+
+
+def ini_read(xp):
+    p = scenery_ini(xp)
+    if not os.path.exists(p):
+        return None, "\n"
+    raw = open(p, "rb").read().decode("utf-8", errors="surrogateescape")
+    nl = "\r\n" if "\r\n" in raw else "\n"
+    return raw.split(nl), nl
+
+
+def ini_place(xp):
+    """Lists the Knick library directly above the simHeaven Vegetation Library. True if changed."""
+    lines, nl = ini_read(xp)
+    if lines is None:
+        return False          # X-Plane creates the file on its next start; new packs are added then
+    mine = f"SCENERY_PACK Custom Scenery/{KNICK_DIR}/"
+    rest = [l for l in lines if KNICK_DIR not in l]
+    i = next((k for k, l in enumerate(rest) if re.search(r"(?i)simheaven.*vegetation.*librar", l)), None)
+    if i is None:
+        i = next((k for k, l in enumerate(rest) if l.startswith("SCENERY_PACK")), len(rest))
+    new = rest[:i] + [mine] + rest[i:]
+    if new == lines:
+        return False
+    ini_write(xp, new, nl)
+    return True
+
+
+def ini_unlist(xp):
+    lines, nl = ini_read(xp)
+    if lines is None or not any(KNICK_DIR in l for l in lines):
+        return
+    ini_write(xp, [l for l in lines if KNICK_DIR not in l], nl)
+
+
+def knick_write(xp, h, hp):
+    """Creates or updates the Knick library for tree height h / profile hp."""
+    d = knick_path(xp)
+    os.makedirs(d, exist_ok=True)
+    for name in KNICK_TEXTURES:
+        src = knick_texture_src(xp, name)
+        if not src:
+            raise RuntimeError(f"X-Plane default tree texture not found: {name} (run the X-Plane installer 'Update')")
+        dst = os.path.join(d, os.path.basename(src))
+        if not os.path.exists(dst) or os.path.getsize(dst) != os.path.getsize(src):
+            if free_space(d) < os.path.getsize(src) + DISK_MARGIN:
+                raise RuntimeError("Not enough free disk space.")
+            shutil.copyfile(src, dst + ".tmp")
+            os.replace(dst + ".tmp", dst)
+    hb = rnd(1.0 - (1.0 - h) * 0.5, 4) if (h < 1.0 and hp == "realistic") else h    # bushes: like shrubs
+    for kind, note, spacing, rand, lod, rows, _vpath in KNICK_KINDS:
+        for season, tex, seasonal, weather in KNICK_SEASONS:
+            out = ["A", "1200", "FOREST", "", f"{KNICK_MARK} {VERSION} - do not edit, Restore original removes it",
+                   f"# {note}, season {season}, tree height factor {fmt(h)} {hp}", "",
+                   "SHADER_2D", f"\tTEXTURE {tex}.png", f"\tSEASONAL {seasonal}.png",
+                   "\tTEXTURE_NORMAL 1\ttrees_bb1_NML.png", f"\tWEATHER {weather}.png",
+                   "\tBLEND_HASH 0.5", "\tSUPER_ROUGHNESS 1.0", "\tNORMAL_TRANSLUCENCY", "",
+                   f"LOD {lod}", "SCALE_X 2048", "SCALE_Y 4096", f"SPACING {spacing} {spacing}",
+                   f"RANDOM {rand} {rand}", "", "#\ts\tt\tw\th\toff\tfreq\tmin\tmax\tquads\tlayer\tname"]
+            for s_, t_, w_, h_, off, freq, mn, mx, k, name in rows:
+                f = h if k == "t" else hb      # small trees in scrub scale like bushes
+                out.append(f"TREE\t{s_}\t{t_}\t{w_}\t{h_}\t{off}\t{freq}\t{fmt(mn * f)}\t{fmt(mx * f)}\t2\t0\t{name}")
+            write_bytes(os.path.join(d, f"{kind}_{season}.for"), ("\r\n".join(out) + "\r\n").encode("ascii"))
+    lib = ["A", "800", "LIBRARY", "", f"{KNICK_MARK} {VERSION} | height {fmt(h)} {hp}",
+           "# Knicks: replaces the simHeaven X-World hedges, tree rows and scrub only in the Knick areas",
+           f"# ({KNICK_AREA}).",
+           "# simHeaven files are not changed. Restore original removes this folder.", "",
+           "REGION_DEFINE xp12_foresttweak_knicks_north"] + [f"REGION_RECT {r}" for r in KNICK_RECTS] + [
+           "REGION xp12_foresttweak_knicks_north", ""]
+    for kind, *_rest in KNICK_KINDS:
+        vpath = _rest[-1]
+        for season, *_ in KNICK_SEASONS:
+            lib.append(f"EXPORT_EXCLUDE_SEASON {season} {vpath} {kind}_{season}.for")
+    write_bytes(os.path.join(d, "library.txt"), ("\r\n".join(lib) + "\r\n").encode("ascii"))
+    moved = ini_place(xp)
+    tlog(f"knicks: library written (height {h} {hp}), scenery_packs.ini {'updated' if moved else 'ok'}")
+
+
+def knick_remove(xp):
+    d = knick_path(xp)
+    if os.path.isdir(d):
+        names = {"library.txt"} | {f"{k[0]}_{s[0]}.for" for k in KNICK_KINDS for s in KNICK_SEASONS}
+        for name in KNICK_TEXTURES:
+            names |= {name + ".dds", name + ".png"}
+        for n in os.listdir(d):
+            if n in names or n.endswith(".tmp") or n.endswith(".fdt_tmp"):
+                os.remove(os.path.join(d, n))
+        try:
+            os.rmdir(d)
+        except OSError:
+            warn(f"  Folder Custom Scenery/{KNICK_DIR} has other files in it and was left in place (inactive).")
+    ini_unlist(xp)
+    tlog("knicks: removed")
+
+
+def hedge_choice_state(xp, hstate):
+    return "Knicks" if knick_info(xp)[0] else hstate
+
+
 # ---------------------------------------------------------------- [1] choose settings
 def ask_spacing(current, tweaked):
     say("  Step 1  Tree spacing (forest density)")
@@ -1147,6 +1351,8 @@ def choose_settings(xp, targets):
     tweaked = st["n"] > 0
     cur_x, cur_h, cur_hp = st["x"], st["h"], st["hp"]
     hfiles, hstate, hlog = hedge_overview(xp)
+    k_on, k_h, k_hp = knick_info(xp)
+    hchoice = hedge_choice_state(xp, hstate)
     has_gf = any(rel(xp, t).startswith("Custom Scenery/") for t in targets)
     say()
     say("  Nothing is changed until you confirm at the end.")
@@ -1163,19 +1369,24 @@ def choose_settings(xp, targets):
     want_h = None
     if hfiles:
         say()
-        say("  Step 4  simHeaven hedges (e.g. the Knicks in northern Germany)")
+        say("  Step 4  simHeaven hedges")
         say("          [1] default   2.2 - 2.8 m high, visible up to 4 km")
         say("          [2] enhanced  about 4 - 5 m high, visible up to 8 km")
-        cur = "2" if hstate == "enhanced" else "1"
+        say("          [3] Knicks    Knick areas (SH, HH, NW Lower Saxony, W Mecklenburg, Denmark):")
+        say("                        hedges, tree rows and scrub become Knicks. Elsewhere: enhanced")
+        cur = {"Knicks": "3", "enhanced": "2"}.get(hchoice, "1")
         while want_h is None:
-            a = input(f"  Choose 1-2 (Enter = {cur}): ").strip() or cur
-            want_h = {"1": "default", "2": "enhanced"}.get(a)
+            a = input(f"  Choose 1-3 (Enter = {cur}): ").strip() or cur
+            want_h = {"1": "default", "2": "enhanced", "3": "Knicks"}.get(a)
     # summary
     same = (fac, hf, hp) == (cur_x, cur_h, cur_hp)
     rebuild = tweaked and (not same or st["n_old"] > 0)       # restore first, then apply the new values
     refresh = tweaked and same and not st["n_old"] and st["n_orig"] > 0
     forest_change = rebuild or refresh or (not tweaked and (fac, hf) != (1.0, 1.0))
-    hedge_change = bool(hfiles) and want_h != hstate
+    hedge_change = bool(hfiles) and want_h != hchoice
+    # Knick heights follow the tree height factor -> rewrite the library when it changes
+    knick_regen = bool(hfiles) and want_h == "Knicks" and k_on and (k_h, k_hp) != (hf, hp)
+    hedge_change = hedge_change or knick_regen
     say()
     say("  Summary")
     say("  -------")
@@ -1184,15 +1395,19 @@ def choose_settings(xp, targets):
         why = "reset by an update" if st["n_reset"] else "not tweaked yet"
         say(f"  Forests : {now}  ->  apply to {st['n_orig']} files {why}")
     elif tweaked and same and st["n_old"]:
-        say(f"  Forests : {now}  ->  re-apply with the 1.4 improvements")
+        say(f"  Forests : {now}  ->  re-apply with the latest improvements")
     elif forest_change:
         say(f"  Forests : {now}  ->  {format_forest(fac, hf, hp)}")
     else:
         say(f"  Forests : {now}  (unchanged)")
     if forest_change and has_gf and fac < 1.0:
-        say(f"            Global Forests v2 cropland (field trees, hedgerows): extra x{CROP_FAC} -> spacing {fmt(rnd(fac * CROP_FAC, 4))}")
+        say(f"            Global Forests v2: cropland (field trees, hedgerows) extra x{CROP_FAC}, sparse forests")
+        say(f"            extra x{SPARSE_FAC['25']} / x{SPARSE_FAC['50']} so they look less empty")
     if hfiles:
-        say(f"  Hedges  : {hstate}" + (f"  ->  {want_h}" if hedge_change else "  (unchanged)"))
+        if knick_regen and want_h == hchoice:
+            say("  Hedges  : Knicks  ->  Knick heights follow the new tree height")
+        else:
+            say(f"  Hedges  : {hchoice}" + (f"  ->  {want_h}" if hedge_change else "  (unchanged)"))
     if not forest_change and not hedge_change:
         say("  Nothing to change.")
         return
@@ -1211,7 +1426,7 @@ def choose_settings(xp, targets):
     if not ask_yes("  Apply these settings now? [Y/n] "):
         say("  Cancelled - nothing was changed.")
         return
-    tlog(f"choose: {now} -> spacing {fac} height {hf} {hp}; hedges {hstate} -> {want_h}")
+    tlog(f"choose: {now} -> spacing {fac} height {hf} {hp}; hedges {hchoice} -> {want_h}")
     ok = True
     if forest_change:
         if rebuild:
@@ -1225,10 +1440,19 @@ def choose_settings(xp, targets):
         else:
             say("  Forests are original again.", C_GREEN)
     if hedge_change and ok:
-        if want_h == "enhanced":
-            hedges_apply(xp, hfiles, hlog)
-        else:
+        if want_h in ("enhanced", "Knicks"):
+            if hstate != "enhanced":
+                hedges_apply(xp, hfiles, hlog)
+        elif hstate != "default":
             hedges_restore(xp, hfiles, hlog)
+        if want_h == "Knicks":
+            knick_write(xp, hf, hp)
+            say(f"  Knicks (northern Germany/Denmark): library Custom Scenery/{KNICK_DIR}", C_GREEN)
+            if not os.path.exists(scenery_ini(xp)):
+                warn("  scenery_packs.ini not found - start X-Plane once, then run Check & repair.")
+        elif k_on:
+            knick_remove(xp)
+            say("  Knicks removed.", C_GREEN)
     if ok:
         say()
         say("  Done! You can start X-Plane now. Type Q and press Enter to close this window.", C_GREEN)
@@ -1245,6 +1469,9 @@ def restore_all(xp, targets):
     hfiles, hstate, hlog = hedge_overview(xp)
     if hfiles and hstate != "default":
         hedges_restore(xp, hfiles, hlog)
+    if knick_info(xp)[0]:
+        knick_remove(xp)
+        say("  Knicks removed.", C_GREEN)
     if ok:
         say()
         say("  Done! You can start X-Plane now. Type Q and press Enter to close this window.", C_GREEN)
@@ -1259,8 +1486,10 @@ def show_status(xp, targets):
     say(f"  Original (tweakable) : {st['n_orig']}" + ("   -> run Choose settings to tweak them" if st["n"] and st["n_orig"] else ""))
     say(f"  Grass/shrubs (kept)  : {st['n_skip']}")
     if st["n_old"]:
-        warn(f"  From an older version: {st['n_old']} files -> run Choose settings once for the 1.4 improvements")
+        warn(f"  From an older version: {st['n_old']} files -> run Choose settings once for the latest improvements")
     say(f"  simHeaven hedges     : {hedge_status_text(hfiles, hstate)}")
+    if knick_info(xp)[0]:
+        say("  Knicks               : on (northern Germany/Denmark: hedges and tree rows as Knicks)")
     other = other_forest_addons(xp)
     if other:
         say()
@@ -1344,6 +1573,11 @@ def check_repair(xp, targets):
     say(f"  Log lines of missing files     : {gone + len(hgone)} removed")
     say(f"  Unused backups / temp files    : {orphans} / {tmp} removed")
     say(f"  Empty backup folders           : {empty} removed")
+    k_on, k_h, k_hp = knick_info(xp)
+    if k_on:
+        # rewrite the Knick library (missing textures etc.) and fix its place in scenery_packs.ini
+        knick_write(xp, k_h, k_hp)
+        say("  Knicks library                 : checked, listed above simHeaven in scenery_packs.ini")
     tlog(f"check: ok {ok_gz}, reset {reset}, gone {gone}, orphans {orphans}, tmp {tmp}, empty dirs {empty}, bad {bad} ({took(t0)})")
     if bad:
         say()
@@ -1378,7 +1612,7 @@ def main():
         warn("  X-Plane is running - please quit it before changing anything.")
     st = forest_state(xp, targets)
     _hf, hstate, _hl = hedge_overview(xp)
-    say(f"  Status  : {status_line(st, hstate)}")
+    say(f"  Status  : {status_line(st, hedge_choice_state(xp, hstate) if hstate else hstate)}")
     environment_hints(xp, targets, gf)
     upd_thread.join(timeout=3)
     tag = upd.get("tag", "")
