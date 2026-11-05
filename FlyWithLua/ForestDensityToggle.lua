@@ -286,17 +286,16 @@ function fdt_build(w, x, y)
     colored(C_DIM_TXT, "Trees compared to original (up to the tweak tool setting)")
     for i = 1, NSHOW do
         if i > 1 then imgui.SameLine(0, GAP5) end
-        local top = (i == 1) and "Original" or ""
         if i > NSTEPS then
             -- more than the tweak tool set in the files: greyed out
             imgui.PushStyleColor(imgui.constant.Col.Button, C_OFF_BTN)
             imgui.PushStyleColor(imgui.constant.Col.Text, C_DIM_TXT)
-            imgui.Button(top .. "\n" .. xfac(i) .. "##fdt" .. i, BTN_W, 40)
+            imgui.Button(xfac(i) .. "##fdt" .. i, BTN_W, 40)
             imgui.PopStyleColor(); imgui.PopStyleColor()
         else
             local col = (i == current_step) and C_GREEN_BTN or ((i == selected_step) and C_SEL_BTN or nil)
             if col then imgui.PushStyleColor(imgui.constant.Col.Button, col) end
-            if imgui.Button(top .. "\n" .. xfac(i) .. "##fdt" .. i, BTN_W, 40) then selected_step = i end
+            if imgui.Button(xfac(i) .. "##fdt" .. i, BTN_W, 40) then selected_step = i end
             if col then imgui.PopStyleColor() end
         end
     end
