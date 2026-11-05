@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0
+- **Hedgerow map Northern Germany/Denmark (optional):** with Knicks on, the tool can use the official map of all Knicks, field hedges, tree rows and avenues of Schleswig-Holstein (LLUR SH, CC BY 4.0, included in the ZIP) and builds exact Knicks on your computer in about a minute. Where the map has nothing (Denmark, Lower Saxony, Mecklenburg, gardens), the simHeaven hedges stay. *Restore original* removes everything.
+- **More natural Knicks:** bushes in three sizes (1.5–8 m) and Ueberhaelter in three ages (6–14 m), all scaled by your tree height. Heights change in sections of about 100 m, and there are sections with and without Ueberhaelter.
+- **Quick switch [5]:** switch between your tweak and the original forests, hedges and Knicks in a few seconds, without calculating again. Both versions are kept side by side.
+- **Tree height presets:** *Original*, *Slightly smaller* 0.8, *Smaller* 0.7, *Much smaller* 0.6 or your own value, like the tree spacing.
+- **No more lines in dense forests:** trees are spread more randomly within their grid, so the planting rows no longer show from above. Orchards and other planted rows stay as they are. No FPS cost.
+- One ZIP with Windows, macOS and Linux for download sites. License notice in every file.
+- Run *Choose settings* once to apply it to an existing tweak.
+
 ## 1.4.1
 - **Knicks (optional):** new choice *[3] Knicks* in the hedge step. In northern Germany and Denmark the flat simHeaven hedges become real Knicks: dense bushes with single trees, tree rows with mixed trees, denser scrub. Elsewhere the hedges are *enhanced*. Knicks follow the tree height setting and are removed completely by *Restore original*.
 - **Fuller sparse forests (Global Forests v2):** sparse forest areas get more trees, dense areas stay as they are.

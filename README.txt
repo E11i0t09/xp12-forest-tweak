@@ -1,4 +1,4 @@
-XP12 Forest Tweak  v1.4.1
+XP12 Forest Tweak  v1.5.0
 =========================
 
 Denser forests and optionally smaller trees (3D trees included) for X-Plane 12.
@@ -15,13 +15,14 @@ Do not copy it into Resources/plugins. No renaming needed.
 DOWNLOADS / FOLDERS
 -------------------
 Download the ZIP for your system - each one contains everything you need:
-  XP12_ForestTweak_v1.4.1_Windows.zip  (folder Windows/ in the repository)
+  XP12_ForestTweak_v1.5.0_Windows.zip  (folder Windows/ in the repository)
       Start_ForestTweak.bat            (double-click), no admin rights needed
-  XP12_ForestTweak_v1.4.1_macOS.zip    (folder macOS/)
+  XP12_ForestTweak_v1.5.0_macOS.zip    (folder macOS/)
       Start_ForestTweak_macOS.command  (double-click), needs Python 3.8+
-  XP12_ForestTweak_v1.4.1_Linux.zip    (folder Linux/)
+  XP12_ForestTweak_v1.5.0_Linux.zip    (folder Linux/)
       start_forest_tweak_linux.sh      (sh start_forest_tweak_linux.sh), Python 3.8+
   FlyWithLua/ForestDensityToggle.lua (optional in-sim window, in every ZIP)
+  XP12_ForestTweak_v1.5.0_All.zip      Windows, macOS and Linux in one ZIP
 
 One tool per system for all setups: if Global Forests v2 is installed, it
 asks whether to include it. All versions share one backup log, nothing is
@@ -35,6 +36,7 @@ HOW TO USE
    or asks for the path.
 3. Start the tool for your system (see above).
 4. Menu: [1] Choose settings  [2] Restore original  [3] Status  [4] Check & repair
+   [5] Switch to original / back to tweak (a few seconds, nothing calculated again)
 
   Choose settings asks step by step - nothing is changed until you confirm
   the summary at the end:
@@ -47,7 +49,8 @@ HOW TO USE
           Global Forests v2 cropland forests (field trees, hedgerows) get an
           extra factor 0.8, e.g. 0.7 -> 0.56, so field edges fill more evenly.
           Sparse Global Forests v2 areas get extra trees, dense areas stay.
-  Step 2  Tree height 0.5 - 1.0 (1.0 = original, 0.8 = 20 % smaller).
+  Step 2  Tree height: Original 1.0, Slightly smaller 0.8, Smaller 0.7,
+          Much smaller 0.6 or your own value from 0.5 to 1.0.
           The 3D tree models are scaled too. This rewrites the files
           and keeps a compressed backup of the originals (with checksum) in
           ForestDensityTweak/mesh_backup (about 1.5 GB with GFv2).
@@ -67,6 +70,8 @@ HOW TO USE
 
 Run it once. Run it again only after an X-Plane or Global Forests update.
 Grass, shrubs and hedges (spacing <= 3.1 m) are not changed.
+In natural forests the trees are spread more randomly, so dense forests show
+no lines from the planting grid.
 At start the tool shows a short status line and warns if the vegetation
 slider is not at maximum, if Global Forests v2 is disabled or not tweaked,
 or if a newer version is available (it only asks GitHub, max. 3 s).
@@ -90,7 +95,14 @@ Step 4 of Choose settings switches the hedges of simHeaven X-World (e.g. the
 Knicks in northern Germany) between
   default   2.2 - 2.8 m high, visible up to 4 km
   enhanced  about 4 - 5 m high, visible up to 8 km
-Only the hedge files of the simHeaven X-World Vegetation Library are changed.
+  Knicks    Knick areas in Germany and Denmark: Knicks with bushes and
+            single trees, mixed tree rows, denser scrub
+Step 5 (with Knicks): hedgerow map Northern Germany/Denmark. The official map of
+all Knicks, field hedges, tree rows and avenues of Schleswig-Holstein (LLUR SH,
+CC BY 4.0) comes with the tool (hedgerow_map_sh.dat). The tool builds exact
+Knicks from it on your computer (about a minute) in
+Custom Scenery/XP12_ForestTweak_HedgerowMap. Elsewhere the simHeaven hedges stay.
+Of simHeaven itself only the hedge files of its Vegetation Library are changed.
 Originals are logged in ForestDensityTweak/hedges.log and restored exactly.
 After a simHeaven update, run Choose settings again and confirm.
 
@@ -98,7 +110,10 @@ After a simHeaven update, run Choose settings again and confirm.
 BACKUP / UNDO / CHECK & REPAIR
 ------------------------------
 Original values are logged in  <X-Plane 12>/ForestDensityTweak/backup.log
-"Restore original" writes them back exactly (forests and hedges). Do not
+"Restore original" writes them back exactly (forests and hedges).
+[5] switches between tweak and original in a few seconds: both versions are
+kept next to the files (.fdt_tweak / .fdt_orig, the first switch needs about as
+much disk space as the tweaked files). Do not
 delete this folder while the tweak is active.
 "Check & repair" checks the 3D model backups (checksum), removes leftovers of
 an interrupted run, unused backups and empty folders, and cleans up the log.
@@ -146,5 +161,9 @@ Not allowed: selling or renting it, bundling it with paid products or
 services, charging for downloads, or distributing modified versions
 commercially. Changed versions may be shared non-commercially under the
 same license, with credit to the author.
+hedgerow_map_sh.dat: based on data of LLUR SH, Biotopkartierung SH4 (Alleen,
+Knicks, Feldhecken, Baumreihen, 2023), CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/). Changed: lines and type only,
+compact format. This file is licensed under CC BY 4.0, not under the tool license.
 License: (c) E11i0t09 - CC BY-NC-SA 4.0 + additional permission,
 see LICENSE. https://creativecommons.org/licenses/by-nc-sa/4.0/

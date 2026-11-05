@@ -14,6 +14,13 @@ Modified versions may be shared non-commercially under the same license, with cr
 
 Copies of v1.0.0 to v1.2.1 obtained before 21 October 2026 were licensed under the MIT License.
 
+EXCEPTION - MAP DATA: the file data/hedgerow_map_sh.dat (hedgerow_map_sh.dat in the ZIPs) is not covered
+by the license above. It is based on data of LLUR SH, Biotopkartierung SH4 - Alleen, Knicks, Feldhecken und
+Baumreihen (2023), and is licensed under the Creative Commons Attribution 4.0 International License
+(CC BY 4.0, https://creativecommons.org/licenses/by/4.0/). Changes: only the lines and their type are kept,
+coordinates rounded to 0.1 m, stored in a compact format. Source:
+https://opendata.schleswig-holstein.de/dataset/sh4-biotopkartierung-der-alleen-knicks-feldhecken-und-baumreihen
+
 ----------------------------------------------------------------------
 
 Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International

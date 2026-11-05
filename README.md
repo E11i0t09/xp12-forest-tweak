@@ -63,10 +63,11 @@ In-sim window (`ForestDensityToggle.lua`): density from 1.0x to 2.8x as many tre
 2. Download the ZIP for your system from [Releases](../../releases) (`…_Windows.zip`, `…_macOS.zip` or `…_Linux.zip`) and unzip it anywhere. No renaming needed. If you unzip it into your X-Plane 12 folder, X-Plane is found automatically. Otherwise the tool reads `x-plane_install_12.txt` or asks for the path.
 3. Start the tool for your system (see below). If Global Forests v2 is installed, it asks whether to include it.
 4. Choose from the menu:
-   - `1` **Choose settings** – tree spacing, tree height, height profile and (with simHeaven X-World) hedges, step by step. Then a summary with an estimated time is shown; nothing is changed until you confirm it. With tree height and Global Forests v2 it can take 10 minutes or more
+   - `1` **Choose settings** – tree spacing, tree height, height profile and (with simHeaven X-World) hedges, Knicks and the hedgerow map, step by step. Then a summary with an estimated time is shown; nothing is changed until you confirm it. With tree height and Global Forests v2 it can take 10 minutes or more
    - `2` **Restore original** – puts back the original forests and hedges
    - `3` **Status** – how many forest files are tweaked, hedges, other scenery with its own forests
    - `4` **Check & repair** – checks the backups, removes leftovers of an interrupted run and cleans up the log
+   - `5` **Switch to original / back to tweak** – switches between your tweak and the original forests, hedges and Knicks in a few seconds, without calculating again
 
 Run it once. Run it again only after an X-Plane or Global Forests update.
 
@@ -146,9 +147,11 @@ Step 4 of *Choose settings* switches them between:
 |---|---|---|
 | **default** | 2.2–2.8 m | 4 km |
 | **enhanced** | about 4–5 m | 8 km |
-| **Knicks** | Knick areas in Germany and Denmark: Knicks with bushes and single trees, tree rows with mixed trees, denser scrub. Elsewhere: *enhanced* | 8–10 km |
+| **Knicks** | Knick areas in Germany and Denmark: Knicks with bushes and single trees, tree rows with mixed trees, denser scrub. Optional: exact Knicks from the hedgerow map (Schleswig-Holstein). Elsewhere: *enhanced* | 8–10 km |
 
-**Knicks:** in the Knick and Wallhecken areas – Schleswig-Holstein, Hamburg, north-west Lower Saxony (Ostfriesland, Oldenburger Land, Elbe-Weser, Emsland, Osnabrück-Nord, Heidekreis), west Mecklenburg and Denmark – the simHeaven hedges become typical Knicks (a dense row of bushes with single oaks, ashes and maples), the simHeaven tree rows get mixed trees with bushes in between, and scrub areas (often narrow Knick strips in OpenStreetMap) get dense bushes with a few small trees. X-Plane can only limit this to whole 1×1° tiles, so some neighbouring areas are included too (e.g. Hannover, Rostock, western Skåne). The tool creates a small library for this in `Custom Scenery/XP12_ForestTweak_Knicks` (the trees are copied from the X-Plane default forests, about 12 MB) and lists it above simHeaven in `scenery_packs.ini` (a backup is kept in `ForestDensityTweak`). Knicks and tree rows follow your tree height factor. simHeaven files are not changed for this; *Restore original* removes the folder and the line again. Knicks only appear where OpenStreetMap has hedges or tree rows – missing ones are not added.
+**Knicks:** in the Knick and Wallhecken areas – Schleswig-Holstein, Hamburg, north-west Lower Saxony (Ostfriesland, Oldenburger Land, Elbe-Weser, Emsland, Osnabrück-Nord, Heidekreis), west Mecklenburg and Denmark – the simHeaven hedges become typical Knicks (bushes of 1.5–8 m with Ueberhaelter of 6–14 m – oaks, ashes and maples – changing in sections of about 100 m, some sections without trees; all scaled by your tree height), the simHeaven tree rows get mixed trees with bushes in between, and scrub areas (often narrow Knick strips in OpenStreetMap) get dense bushes with a few small trees. X-Plane can only limit this to whole 1×1° tiles, so some neighbouring areas are included too (e.g. Hannover, Rostock, western Skåne). The tool creates a small library for this in `Custom Scenery/XP12_ForestTweak_Knicks` (the trees are copied from the X-Plane default forests, about 12 MB) and lists it above simHeaven in `scenery_packs.ini` (a backup is kept in `ForestDensityTweak`). Knicks and tree rows follow your tree height factor. simHeaven files are not changed for this; *Restore original* removes the folder and the line again. Knicks only appear where OpenStreetMap has hedges or tree rows – missing ones are not added.
+
+**Hedgerow map Northern Germany/Denmark (optional, step 5):** with Knicks on, the tool can also use the official map of all Knicks, field hedges, tree rows and avenues of Schleswig-Holstein (Biotopkartierung SH4, about 60,000 km). Many of them are missing in OpenStreetMap. The map comes with the tool (`hedgerow_map_sh.dat`, about 6.5 MB) and is turned into scenery tiles on your computer, in `Custom Scenery/XP12_ForestTweak_HedgerowMap` (about 35 MB, takes about a minute). Knicks and field hedges become 1.6 m wide Knick strips, tree rows get a tree about every 7 m and avenues a row on both sides. In these tiles the simHeaven hedges and tree rows are replaced; the ones the map does not have (Denmark, Lower Saxony, Mecklenburg, gardens) are taken over from your own simHeaven scenery, so nothing is lost and nothing is doubled. The folder is listed above simHeaven X-World in `scenery_packs.ini`, because simHeaven removes the forests of scenery below it. *Restore original* removes the folder. Map data: LLUR SH, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), see Credits.
 
 Only the hedge files of the *simHeaven X-World Vegetation Library* are changed; the original lines are logged in `ForestDensityTweak/hedges.log` and restored exactly when you switch back. You can change it on its own by keeping the other values. Hedges are simple 2D billboards, so the cost is small, but in hedge-rich regions there are a lot of them. Not shown without simHeaven X-World. After a simHeaven update, run *Choose settings* again and confirm.
 
@@ -168,13 +171,14 @@ Switch the density in flight and see the tree height, height profile and hedge s
 
 1. Copy `FlyWithLua/ForestDensityToggle.lua` from the ZIP to `X-Plane 12/Resources/plugins/FlyWithLua/Scripts/`
 2. In the sim: *Plugins → Forest Tweak → Show / hide window* (fallback: *Plugins → FlyWithLua → FlyWithLua Macros → Forest Tweak: window*)
-3. Pick a step and press **Apply**. With *Reload scenery on apply* ticked it shows at once (the reload takes a while), otherwise on scenery loaded as you fly on. The chosen step is remembered and set again at the next sim start (without reload).
+3. Pick a step and press **Apply**. With *Reload scenery on apply* ticked it shows at once (the reload takes a while), otherwise on scenery loaded as you fly on. **Reload scenery** reloads at once at any time. The chosen step is remembered for the next flight; if it is below the tool setting, a note is shown on screen and in the window.
 
 Key bindings: search `ForestDensity` in the keyboard settings.
 
 ## How it works
 
 - **Tree spacing:** `SPACING` (tree distance) and `RANDOM` in each `.for` file are multiplied by the factor. The vegetation slider can never go above this value.
+- **No grid lines:** in natural forests `RANDOM` (how far a tree may move away from its grid position) is set to at least half the tree spacing. With less, X-Plane leaves empty strips between the tree rows, which show up as lines in dense forests. Planted rows like orchards keep their grid.
 - **Height:** min/max height in each file's tree list is multiplied by the factor (per forest type with the *realistic* profile). The 3D models are scaled to match.
 - **Changed folders:** `Resources/default scenery/1200 forests`, plus `Custom Scenery/Global_Forests_v2` if you include it. Hedges option: `Custom Scenery/simHeaven_X-World_Vegetation_Library` (hedge files only). Knicks option: own folder `Custom Scenery/XP12_ForestTweak_Knicks` plus one line in `scenery_packs.ini`. simHeaven X-World links its forests to the default forest files, so they are covered too.
 - **Backup:** original values in `<X-Plane 12>/ForestDensityTweak/backup.log`. **Keep this folder while the tweak is active.**
@@ -184,6 +188,7 @@ Key bindings: search `ForestDensity` in the keyboard settings.
 ## Undo
 
 - Use **Restore original** in the menu. It writes back the exact original values.
+- To compare, use **[5] Switch to original**: forests, hedges and Knicks are original again, your tweak is kept next to the files (`.fdt_tweak` / `.fdt_orig`). **[5]** again switches back in a few seconds. The first switch keeps a copy of the original files (about as much disk space as the tweaked files, with 3D trees and Global Forests v2 a few GB). *Choose settings*, *Restore original* and *Check & repair* switch back to the tweak first.
 - If a 3D model backup is missing or damaged, that file stays tweaked (it is never scaled twice). Run the X-Plane installer (*Update*) or reinstall Global Forests v2, then **Check & repair**.
 
 ## Performance
@@ -201,16 +206,20 @@ More trees means more GPU work, especially when flying low over large forests. C
 
 | Folder | Content | Download |
 |---|---|---|
-| `Windows/` | `Start_ForestTweak.bat` + `XP12_ForestTweak.ps1` | `XP12_ForestTweak_v1.4.1_Windows.zip` |
-| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.4.1_macOS.zip` |
-| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.4.1_Linux.zip` |
+| `Windows/` | `Start_ForestTweak.bat` + `XP12_ForestTweak.ps1` | `XP12_ForestTweak_v1.5.0_Windows.zip` |
+| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.5.0_macOS.zip` |
+| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.5.0_Linux.zip` |
 | `FlyWithLua/` | `ForestDensityToggle.lua` (in-sim window, all systems) | included in every ZIP |
+| `data/` | `hedgerow_map_sh.dat` (hedgerow map, CC BY 4.0) | included in every ZIP |
+| all of the above | Windows, macOS and Linux in one ZIP | `XP12_ForestTweak_v1.5.0_All.zip` |
 
 Download the ZIP for your system from [Releases](../../releases) – each one contains everything you need.
 
 ## Credits
 
 Inspired by the `.for` spacing approach discussed on the X-Plane.org forums.
+
+Hedgerow map (`hedgerow_map_sh.dat`): based on data of LLUR SH, [Biotopkartierung SH4 – Alleen, Knicks, Feldhecken und Baumreihen](https://opendata.schleswig-holstein.de/dataset/sh4-biotopkartierung-der-alleen-knicks-feldhecken-und-baumreihen) (2023), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Changed: only the lines and their type are kept, coordinates rounded to 0.1 m and stored in a compact format; the tool turns them into X-Plane forest strips and tree rows. The map file is licensed under CC BY 4.0 (not under the tool license). Hedges and tree rows elsewhere come from simHeaven X-World (OpenStreetMap data, © OpenStreetMap contributors, ODbL) on your own computer and are not part of this tool.
 
 ## Changelog
 
@@ -224,7 +233,7 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 **Not allowed** without written permission: selling or renting it, bundling it with paid products or services, charging for downloads, or distributing modified versions commercially.
 
-You may share and adapt it non-commercially, as long as you give appropriate credit and share your changes under the same license. Copies of v1.0.0 to v1.2.1 obtained before 21 October 2026 were licensed under the MIT License.
+You may share and adapt it non-commercially, as long as you give appropriate credit and share your changes under the same license. **Exception:** the hedgerow map `data/hedgerow_map_sh.dat` is based on data of LLUR SH and licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), see Credits and `data/README.txt`. Copies of v1.0.0 to v1.2.1 obtained before 21 October 2026 were licensed under the MIT License.
 
 ## Disclaimer
 
