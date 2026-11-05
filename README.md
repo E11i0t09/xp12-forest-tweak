@@ -32,6 +32,10 @@ Knicks option in northern Germany: hedges and tree rows become Knicks with bushe
 |---|---|
 | ![Knicks option: rows of bushes with single trees between the fields](screenshots/knicks.jpg) | ![Knicks option from a Cessna: field pattern framed by Knicks](screenshots/knicks_air.jpg) |
 
+Hedgerow map Northern Germany/Denmark (new in 1.5.0): in Schleswig-Holstein the Knicks follow the real hedgerow lines from the state biotope mapping (LLUR SH, CC BY 4.0).
+
+![Hedgerow map: dense Knicks along the real field boundaries in Schleswig-Holstein, low evening sun](screenshots/knicks_map.jpg)
+
 In-sim window (`ForestDensityToggle.lua`): density from 1.0x to 2.8x as many trees as the original, scenery reload option and the settings of the tweak.
 
 ![Forest Tweak window in X-Plane 12 with density buttons 1.0x to 2.8x over a dense forest slope](screenshots/window.jpg)
