@@ -1,6 +1,6 @@
 <#
   XP12 Forest Tweak  -  Windows
-  Version 1.4.0 (2026-10-26)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.4.1 (2026-11-04)   https://github.com/E11i0t09/xp12-forest-tweak
 
   Denser forests and optionally smaller trees for X-Plane 12 - for vanilla X-Plane,
   simHeaven X-World and Global Forests v2 (one tool for all; if Global Forests v2 is
@@ -12,7 +12,8 @@
     never go above the density set there. RANDOM is scaled too, so the trees keep the
     same relative irregularity instead of clumping together.
   - Global Forests v2 "cropland" forests (field trees and hedgerows between fields) get
-    an extra factor of 0.8 on top, so field edges are filled more evenly.
+    an extra factor of 0.8 on top, so field edges are filled more evenly. Sparse Global
+    Forests v2 forests (density classes 25 and 50) get an extra 0.75 / 0.85.
   - Files with SPACING <= 3.1 m (grass, shrubs, hedges) are left untouched.
   - Optional tree height factor (0.5 - 1.0): min and max height of every tree are scaled.
     "realistic" profile: conifers shrink less, palms a bit less, shrubs/orchards hardly.
@@ -25,7 +26,10 @@
     puts back the exact original values and nothing is ever scaled twice.
   - Optional: simHeaven hedges "default" or "enhanced" (hedges such as the Knicks in
     northern Germany about 4-5 m high and visible up to 8 km). Originals are logged in
-    ForestDensityTweak\hedges.log.
+    ForestDensityTweak\hedges.log. Or "Knicks": in northern Germany and Denmark the hedges
+    become Knicks (bushes plus single trees) and the tree rows mixed tree rows. For this the
+    tool creates a small library in Custom Scenery\XP12_ForestTweak_Knicks (textures copied
+    from the X-Plane default forests) and lists it above simHeaven in scenery_packs.ini.
   - Actions are written to ForestDensityTweak\tool.log (helpful for bug reports).
 
   After an X-Plane or Global Forests update the updated files are original again.
@@ -36,7 +40,7 @@
 #>
 
 $ErrorActionPreference = 'Stop'
-$Version    = '1.4.0'
+$Version    = '1.4.1'
 $TestedXP   = '12.4'          # X-Plane version the tool was tested with
 $Repo       = 'E11i0t09/xp12-forest-tweak'
 $Threshold  = 3.1             # files with a smaller tree spacing are grass/shrubs/hedges -> kept
@@ -45,6 +49,8 @@ $DefaultFac = 0.7             # preset [2]
 $MinFac     = 0.4
 $MinHeight  = 0.5             # lowest allowed height factor
 $CropFac    = 0.8             # extra spacing factor for Global Forests v2 cropland forests
+$SparseFac  = @{ '25' = 0.75; '50' = 0.85 }   # extra spacing factor for sparse Global Forests v2 density classes
+$SparseRx   = [regex]'_(25|50)_y\d+\.for$'
 $DiskMargin = 200MB           # always keep this much free space
 $MeshWeight = 6               # a file whose 3D models are scaled takes about 6x longer than one with only new header lines
 $Rate       = 45MB            # rough work units per second (for the time estimate only)
@@ -260,7 +266,7 @@ function Get-OtherForestAddons($xp) {
     $packs = Get-PackStates $xp
     @(Get-ChildItem -LiteralPath (Join-Path $xp 'Custom Scenery') -Directory | Sort-Object Name | Where-Object {
         $low = $_.Name.ToLower()
-        -not ($low.StartsWith('simheaven') -or $low.StartsWith('global_forests') -or $low.StartsWith('global forests')) -and
+        -not ($low.StartsWith('simheaven') -or $low.StartsWith('global_forests') -or $low.StartsWith('global forests') -or $low.StartsWith($KnickDir.ToLower())) -and
         $OtherRx.IsMatch($_.Name) -and -not ($packs.ContainsKey($low) -and -not $packs[$low])
     } | ForEach-Object { $_.Name })
 }
@@ -373,7 +379,8 @@ function Write-Bytes($path, [byte[]]$out) {
     if ((Get-Free (Split-Path -Parent $path)) -lt $out.Length + $DiskMargin) { throw 'Not enough free disk space - stopped. Everything done so far is logged and safe.' }
     $tmp = "$path.fdt_tmp"
     [IO.File]::WriteAllBytes($tmp, $out)
-    [IO.File]::Replace($tmp, $path, [NullString]::Value)   # atomic swap, never a half-written .for
+    if (Test-Path -LiteralPath $path) { [IO.File]::Replace($tmp, $path, [NullString]::Value) }   # atomic swap, never a half-written .for
+    else { [IO.File]::Move($tmp, $path) }
 }
 
 function Join-For($fo, [string]$newHead, [string]$newTail, [byte[]]$newMid = $null) {
@@ -462,8 +469,11 @@ function Get-HeightWeight([string]$rel) {
 
 function Get-Effective([string]$rel, [double]$x, [double]$h, [string]$hp) {
     # (spacing factor, height factor) actually used for one file
-    $xe = $x
-    if ($x -lt 1.0 -and $rel.Replace('\', '/').ToLower().Contains('/cropland/')) { $xe = Rnd ($x * $CropFac) 4 }
+    $rl = $rel.Replace('\', '/').ToLower()
+    $f = 1.0
+    if ($x -lt 1.0 -and $rl.Contains('/cropland/')) { $f *= $CropFac }
+    if ($x -lt 1.0 -and $rl.StartsWith('custom scenery/')) { $m = $SparseRx.Match($rl); if ($m.Success) { $f *= $SparseFac[$m.Groups[1].Value] } }
+    $xe = if ($f -ne 1.0) { Rnd ($x * $f) 4 } else { $x }
     $he = $h
     if ($h -lt 1.0 -and $hp -eq 'realistic') { $he = Rnd (1.0 - (1.0 - $h) * (Get-HeightWeight $rel)) 4 }
     return @($xe, $he)
@@ -559,7 +569,7 @@ function Get-StatusLine($st, $hstate) {
         $s = 'forests tweaked: ' + (Format-Forest $st.X $st.H $st.HP)
         if ($st.NReset) { $s += " - $($st.NReset) files reset by an update, run Choose settings" }
         elseif ($st.NOrig) { $s += " - $($st.NOrig) files not tweaked" }
-        elseif ($st.NOld) { $s += ' - run Choose settings once to apply the 1.4 improvements' }
+        elseif ($st.NOld) { $s += ' - run Choose settings once to apply the latest improvements' }
     }
     if ($hstate) { $s += " | hedges $hstate" }
     return $s
@@ -842,6 +852,164 @@ function Restore-Hedges($xp, $o) {
     Write-Host "  simHeaven hedges back to default: $done files" -ForegroundColor Green
 }
 
+# ---------------------------------------------------------------- Knicks (northern Germany / Denmark)
+# Own small library that replaces the simHeaven hedges (OSM barrier=hedge) and tree rows
+# (OSM natural=tree_row) and scrub only in the Knick areas with Knicks: bushes plus single trees. Uses the
+# X-Plane default tree billboards (copied, they may not be shipped) and the same XP12 shader
+# settings as the default forests. simHeaven files are not changed for it.
+$KnickDir  = 'XP12_ForestTweak_Knicks'
+$KnickMark = '# generated by XP12 Forest Tweak'
+# Knick / Wallhecken areas, whole 1x1 degree tiles "west south east north" (south-west corners):
+# Schleswig-Holstein (everywhere), Niedersachsen (Ostfriesland, Oldenburg, Elbe-Weser, Emsland,
+# Osnabrueck-Nord, Heidekreis - NLWKN), West-Mecklenburg (LUNG), Hamburg, Denmark (diger, hegn).
+$KnickRects = @('7 52 9 52', '7 53 11 53', '8 54 12 54', '8 55 12 55', '14 55 14 55', '8 56 11 57')
+$KnickArea  = 'Schleswig-Holstein, Hamburg, north-west Lower Saxony, west Mecklenburg, Denmark'
+$KnickSeasons = @(@('spr', 'trees_bb1_ALB_sp', 'trees_bb1_ALB', 'trees_bb1_SM'), @('sum', 'trees_bb1_ALB', 'trees_bb1_ALB_fa', 'trees_bb1_SM'),
+                  @('fal', 'trees_bb1_ALB_fa', 'trees_bb1_ALB_wi', 'trees_bb1_SM'), @('win', 'trees_bb1_ALB_wi', 'trees_bb1_ALB_sp', 'trees_bb1_SM_wi'))
+$KnickTextures = @('trees_bb1_ALB', 'trees_bb1_ALB_sp', 'trees_bb1_ALB_fa', 'trees_bb1_ALB_wi', 'trees_bb1_NML', 'trees_bb1_SM', 'trees_bb1_SM_wi')
+#   s t w h off freq min max kind name   (kind b = bush, t = tree)
+$KnickHedge = @(@(224,2848,118,124,59,23,4,6,'b','decid_03'), @(1900,2848,128,124,64,23,4,6,'b','sorbus_07'),
+                @(1792,2848,108,124,54,23,4,5.5,'b','lilac_06'), @(332,2080,110,124,55,23,4.5,6,'b','locust_01'),
+                @(880,3584,170,252,85,2,12,18,'t','oak1_07'), @(1050,3584,104,252,52,2,13,18,'t','oak1_08'),
+                @(1452,3584,190,252,95,2,12,17,'t','ash_07'), @(776,2976,184,252,92,2,12,16,'t','maple_07'))
+$KnickRow = @(@(880,3584,170,252,85,8,12,20,'t','oak1_07'), @(1050,3584,104,252,52,8,12,18,'t','oak1_08'),
+              @(1154,3584,128,252,64,7,12,19,'t','oak1_09'), @(1452,3584,190,252,95,7,11,18,'t','ash_07'),
+              @(776,2976,184,252,92,6,10,16,'t','maple_07'), @(250,2592,208,252,104,6,11,17,'t','elm_05'),
+              @(294,3584,118,252,59,5,10,15,'t','birch_07'), @(1296,2976,110,252,55,4,11,17,'t','aspen_05'),
+              @(0,2976,208,252,104,4,12,18,'t','redoak_04'), @(224,2848,118,124,59,15,4,6,'b','decid_03'),
+              @(1900,2848,128,124,64,15,4,6,'b','sorbus_07'), @(1792,2848,108,124,54,15,4,5.5,'b','lilac_06'))
+# scrub areas (OSM natural=scrub, often narrow Knick strips): dense bushes 2-6 m, a few small trees
+$KnickScrub = @(@(224,2848,118,124,59,25,2.5,5,'b','decid_03'), @(1900,2848,128,124,64,24,2,4.5,'b','sorbus_07'),
+                @(1792,2848,108,124,54,24,2,4,'b','lilac_06'), @(332,2080,110,124,55,24,3,6,'b','locust_01'),
+                @(294,3584,118,252,59,2,6,10,'s','birch_07'), @(1296,2976,110,252,55,1,6,10,'s','aspen_05'))
+$KnickKinds = @(@('knick', 'Knick: dense row of bushes plus single trees about every 10 m', '0.8', '0.8', '8000', $KnickHedge, 'simheaven/forests/hedge.for'),
+                @('treerow', 'Knick tree row: mixed broadleaf trees plus bushes in between', '2.5', '1.2', '10000', $KnickRow, 'simheaven/forests/random_tree.for'),
+                @('scrub', 'Knick scrub: dense bushes 2-6 m with a few small trees', '3', '1.5', '8000', $KnickScrub, 'simheaven/forests/shrubs.for'))
+
+function Get-KnickPath($xp) { Join-Path $xp "Custom Scenery/$KnickDir" }
+
+function Get-KnickInfo($xp) {
+    # active, tree height and profile of a library generated by this tool
+    $lt = Join-Path (Get-KnickPath $xp) 'library.txt'
+    if (Test-Path -LiteralPath $lt) {
+        foreach ($l in [IO.File]::ReadAllLines($lt, $Latin1)) {
+            if ($l -match ('^' + [regex]::Escape($KnickMark) + '.*\|\s*height\s+([0-9.]+)\s+(\w+)')) {
+                return [pscustomobject]@{ On = $true; H = [double]::Parse($Matches[1], $Inv); HP = $Matches[2] }
+            }
+        }
+    }
+    [pscustomobject]@{ On = $false; H = $null; HP = $null }
+}
+
+function Get-IniPath($xp) { Join-Path $xp 'Custom Scenery/scenery_packs.ini' }
+
+function Read-Ini($xp) {
+    $p = Get-IniPath $xp
+    if (-not (Test-Path -LiteralPath $p)) { return $null }
+    $raw = [IO.File]::ReadAllText($p, $Utf8)
+    $nl = if ($raw.Contains("`r`n")) { "`r`n" } else { "`n" }
+    [pscustomobject]@{ Lines = @($raw -split [regex]::Escape($nl)); NL = $nl }
+}
+
+function Write-Ini($xp, $lines, $nl) {
+    # one backup per day in ForestDensityTweak, then write via a temp file
+    $p = Get-IniPath $xp
+    $bk = Join-Path (Get-TweakDir $xp) ('scenery_packs.ini.backup-' + (Get-Date -Format 'yyyyMMdd'))
+    if ((Test-Path -LiteralPath $p) -and -not (Test-Path -LiteralPath $bk)) { Copy-Item -LiteralPath $p -Destination $bk }
+    Write-Bytes $p ($Utf8.GetBytes(($lines -join $nl)))
+}
+
+function Set-KnickIniPlace($xp) {
+    # lists the Knick library directly above the simHeaven Vegetation Library; $true if changed
+    $ini = Read-Ini $xp
+    if (-not $ini) { return $false }
+    $mine = "SCENERY_PACK Custom Scenery/$KnickDir/"
+    $rest = @($ini.Lines | Where-Object { -not $_.Contains($KnickDir) })
+    $i = -1
+    for ($k = 0; $k -lt $rest.Count; $k++) { if ($rest[$k] -match '(?i)simheaven.*vegetation.*librar') { $i = $k; break } }
+    if ($i -lt 0) { for ($k = 0; $k -lt $rest.Count; $k++) { if ($rest[$k].StartsWith('SCENERY_PACK')) { $i = $k; break } } }
+    if ($i -lt 0) { $i = $rest.Count }
+    $new = @()
+    if ($i -gt 0) { $new += $rest[0..($i - 1)] }
+    $new += $mine
+    if ($i -lt $rest.Count) { $new += $rest[$i..($rest.Count - 1)] }
+    if (($new -join "`n") -eq ($ini.Lines -join "`n")) { return $false }
+    Write-Ini $xp $new $ini.NL
+    return $true
+}
+
+function Remove-KnickIni($xp) {
+    $ini = Read-Ini $xp
+    if (-not $ini -or -not @($ini.Lines | Where-Object { $_.Contains($KnickDir) }).Count) { return }
+    Write-Ini $xp @($ini.Lines | Where-Object { -not $_.Contains($KnickDir) }) $ini.NL
+}
+
+function Write-Knicks($xp, [double]$h, [string]$hp) {
+    # creates or updates the Knick library for tree height $h / profile $hp
+    $d = Get-KnickPath $xp
+    if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d | Out-Null }
+    $tex = Join-Path $xp 'Resources/default scenery/1200 forests/textures'
+    foreach ($name in $KnickTextures) {
+        $src = $null
+        foreach ($ext in '.dds', '.png') { $c = Join-Path $tex ($name + $ext); if (Test-Path -LiteralPath $c) { $src = $c; break } }
+        if (-not $src) { throw "X-Plane default tree texture not found: $name (run the X-Plane installer 'Update')" }
+        $dst = Join-Path $d (Split-Path -Leaf $src)
+        if (-not (Test-Path -LiteralPath $dst) -or (Get-Item -LiteralPath $dst).Length -ne (Get-Item -LiteralPath $src).Length) {
+            if ((Get-Free $d) -lt (Get-Item -LiteralPath $src).Length + $DiskMargin) { throw 'Not enough free disk space.' }
+            Copy-Item -LiteralPath $src -Destination "$dst.tmp" -Force
+            Move-Item -LiteralPath "$dst.tmp" -Destination $dst -Force
+        }
+    }
+    $hb = if ($h -lt 1.0 -and $hp -eq 'realistic') { Rnd (1.0 - (1.0 - $h) * 0.5) 4 } else { $h }    # bushes: like shrubs
+    foreach ($k in $KnickKinds) {
+        foreach ($s in $KnickSeasons) {
+            $out = @('A', '1200', 'FOREST', '', "$KnickMark $Version - do not edit, Restore original removes it",
+                     "# $($k[1]), season $($s[0]), tree height factor $(Fmt $h) $hp", '',
+                     'SHADER_2D', "`tTEXTURE $($s[1]).png", "`tSEASONAL $($s[2]).png", "`tTEXTURE_NORMAL 1`ttrees_bb1_NML.png",
+                     "`tWEATHER $($s[3]).png", "`tBLEND_HASH 0.5", "`tSUPER_ROUGHNESS 1.0", "`tNORMAL_TRANSLUCENCY", '',
+                     "LOD $($k[4])", 'SCALE_X 2048', 'SCALE_Y 4096', "SPACING $($k[2]) $($k[2])", "RANDOM $($k[3]) $($k[3])", '',
+                     "#`ts`tt`tw`th`toff`tfreq`tmin`tmax`tquads`tlayer`tname")
+            foreach ($r in $k[5]) {
+                $f = if ($r[8] -eq 't') { $h } else { $hb }      # small trees in scrub scale like bushes
+                $out += "TREE`t$($r[0])`t$($r[1])`t$($r[2])`t$($r[3])`t$($r[4])`t$($r[5])`t$(Fmt ([double]$r[6] * $f))`t$(Fmt ([double]$r[7] * $f))`t2`t0`t$($r[9])"
+            }
+            Write-Bytes (Join-Path $d "$($k[0])_$($s[0]).for") ([Text.Encoding]::ASCII.GetBytes(($out -join "`r`n") + "`r`n"))
+        }
+    }
+    $lib = @('A', '800', 'LIBRARY', '', "$KnickMark $Version | height $(Fmt $h) $hp",
+             '# Knicks: replaces the simHeaven X-World hedges, tree rows and scrub only in the Knick areas',
+             "# ($KnickArea).",
+             '# simHeaven files are not changed. Restore original removes this folder.', '',
+             'REGION_DEFINE xp12_foresttweak_knicks_north')
+    foreach ($r in $KnickRects) { $lib += "REGION_RECT $r" }
+    $lib += @('REGION xp12_foresttweak_knicks_north', '')
+    foreach ($k in $KnickKinds) {
+        foreach ($s in $KnickSeasons) { $lib += "EXPORT_EXCLUDE_SEASON $($s[0]) $($k[6]) $($k[0])_$($s[0]).for" }
+    }
+    Write-Bytes (Join-Path $d 'library.txt') ([Text.Encoding]::ASCII.GetBytes(($lib -join "`r`n") + "`r`n"))
+    $moved = Set-KnickIniPlace $xp
+    TLog "knicks: library written (height $h $hp), scenery_packs.ini $(if ($moved) { 'updated' } else { 'ok' })"
+}
+
+function Remove-Knicks($xp) {
+    $d = Get-KnickPath $xp
+    if (Test-Path -LiteralPath $d) {
+        $names = @('library.txt')
+        foreach ($k in $KnickKinds) { foreach ($s in $KnickSeasons) { $names += "$($k[0])_$($s[0]).for" } }
+        foreach ($n in $KnickTextures) { $names += "$n.dds"; $names += "$n.png" }
+        foreach ($f in @(Get-ChildItem -LiteralPath $d -File)) {
+            if ($names -contains $f.Name -or $f.Name.EndsWith('.tmp') -or $f.Name.EndsWith('.fdt_tmp')) { Remove-Item -LiteralPath $f.FullName }
+        }
+        if (@(Get-ChildItem -LiteralPath $d -Force).Count -eq 0) { Remove-Item -LiteralPath $d }
+        else { Warn "  Folder Custom Scenery\$KnickDir has other files in it and was left in place (inactive)." }
+    }
+    Remove-KnickIni $xp
+    TLog 'knicks: removed'
+}
+
+function Get-HedgeChoice($xp, $overall) { if ((Get-KnickInfo $xp).On) { 'Knicks' } else { $overall } }
+
+
 # ---------------------------------------------------------------- [1] choose settings
 function Read-Spacing([double]$current, [bool]$tweaked) {
     Write-Host '  Step 1  Tree spacing (forest density)'
@@ -882,6 +1050,8 @@ function Invoke-ChooseSettings($xp, $targets) {
     $st = Get-ForestState $xp $targets
     $tweaked = $st.N -gt 0
     $ho = Get-HedgeOverview $xp
+    $ki = Get-KnickInfo $xp
+    $hchoice = Get-HedgeChoice $xp $ho.Overall
     $hasGf = @($targets | Where-Object { (Rel $xp $_) -match '^Custom Scenery' }).Count -gt 0
     Write-Host ''
     Write-Host '  Nothing is changed until you confirm at the end.'
@@ -896,13 +1066,15 @@ function Invoke-ChooseSettings($xp, $targets) {
     $want = $null
     if ($ho.Files.Count) {
         Write-Host ''
-        Write-Host '  Step 4  simHeaven hedges (e.g. the Knicks in northern Germany)'
+        Write-Host '  Step 4  simHeaven hedges'
         Write-Host '          [1] default   2.2 - 2.8 m high, visible up to 4 km'
         Write-Host '          [2] enhanced  about 4 - 5 m high, visible up to 8 km'
-        $cur = if ($ho.Overall -eq 'enhanced') { '2' } else { '1' }
+        Write-Host '          [3] Knicks    Knick areas (SH, HH, NW Lower Saxony, W Mecklenburg, Denmark):'
+        Write-Host '                        hedges, tree rows and scrub become Knicks. Elsewhere: enhanced'
+        $cur = if ($hchoice -eq 'Knicks') { '3' } elseif ($hchoice -eq 'enhanced') { '2' } else { '1' }
         while (-not $want) {
-            $a = (Read-Host "  Choose 1-2 (Enter = $cur)").Trim(); if ($a -eq '') { $a = $cur }
-            if ($a -eq '1') { $want = 'default' } elseif ($a -eq '2') { $want = 'enhanced' }
+            $a = (Read-Host "  Choose 1-3 (Enter = $cur)").Trim(); if ($a -eq '') { $a = $cur }
+            if ($a -eq '1') { $want = 'default' } elseif ($a -eq '2') { $want = 'enhanced' } elseif ($a -eq '3') { $want = 'Knicks' }
         }
     }
     # summary
@@ -910,20 +1082,25 @@ function Invoke-ChooseSettings($xp, $targets) {
     $rebuild = $tweaked -and ((-not $same) -or $st.NOld -gt 0)       # restore first, then apply the new values
     $refresh = $tweaked -and $same -and $st.NOld -eq 0 -and $st.NOrig -gt 0
     $forestChange = $rebuild -or $refresh -or ((-not $tweaked) -and ($fac -ne 1.0 -or $hf -ne 1.0))
-    $hedgeChange = $ho.Files.Count -and $want -ne $ho.Overall
+    $hedgeChange = $ho.Files.Count -and $want -ne $hchoice
+    # Knick heights follow the tree height factor -> rewrite the library when it changes
+    $knickRegen = $ho.Files.Count -and $want -eq 'Knicks' -and $ki.On -and (($ki.H -ne $hf) -or ($ki.HP -ne $hp))
+    $hedgeChange = $hedgeChange -or $knickRegen
     Write-Host ''
     Write-Host '  Summary'
     Write-Host '  -------'
     $now = if ($tweaked) { Format-Forest $st.X $st.H $st.HP } else { 'original' }
     if ($refresh) { $why = if ($st.NReset) { 'reset by an update' } else { 'not tweaked yet' }; Write-Host "  Forests : $now  ->  apply to $($st.NOrig) files $why" }
-    elseif ($tweaked -and $same -and $st.NOld) { Write-Host "  Forests : $now  ->  re-apply with the 1.4 improvements" }
+    elseif ($tweaked -and $same -and $st.NOld) { Write-Host "  Forests : $now  ->  re-apply with the latest improvements" }
     elseif ($forestChange) { Write-Host "  Forests : $now  ->  $(Format-Forest $fac $hf $hp)" }
     else { Write-Host "  Forests : $now  (unchanged)" }
     if ($forestChange -and $hasGf -and $fac -lt 1.0) {
-        Write-Host "            Global Forests v2 cropland (field trees, hedgerows): extra x$(Fmt $CropFac) -> spacing $(Fmt (Rnd ($fac * $CropFac) 4))"
+        Write-Host "            Global Forests v2: cropland (field trees, hedgerows) extra x$(Fmt $CropFac), sparse forests"
+        Write-Host "            extra x$(Fmt $SparseFac['25']) / x$(Fmt $SparseFac['50']) so they look less empty"
     }
     if ($ho.Files.Count) {
-        if ($hedgeChange) { Write-Host "  Hedges  : $($ho.Overall)  ->  $want" } else { Write-Host "  Hedges  : $($ho.Overall)  (unchanged)" }
+        if ($knickRegen -and $want -eq $hchoice) { Write-Host '  Hedges  : Knicks  ->  Knick heights follow the new tree height' }
+        elseif ($hedgeChange) { Write-Host "  Hedges  : $hchoice  ->  $want" } else { Write-Host "  Hedges  : $hchoice  (unchanged)" }
     }
     if (-not $forestChange -and -not $hedgeChange) { Write-Host '  Nothing to change.'; return }
     if ($forestChange -and $hf -lt 1.0) {
@@ -938,7 +1115,7 @@ function Invoke-ChooseSettings($xp, $targets) {
         Warn '  Please keep this window open.'
     }
     if (-not (Ask-Yes '  Apply these settings now? [Y/n]')) { Write-Host '  Cancelled - nothing was changed.'; return }
-    TLog "choose: $now -> spacing $fac height $hf $hp; hedges $($ho.Overall) -> $want"
+    TLog "choose: $now -> spacing $fac height $hf $hp; hedges $hchoice -> $want"
     if ($forestChange) {
         if ($rebuild) {
             Write-Host '  Restoring the original forests first ...'
@@ -947,7 +1124,15 @@ function Invoke-ChooseSettings($xp, $targets) {
         if ($fac -ne 1.0 -or $hf -ne 1.0) { [void](Invoke-ApplyValues $xp $targets $fac $hf $hp) }
         else { Write-Host '  Forests are original again.' -ForegroundColor Green }
     }
-    if ($hedgeChange) { if ($want -eq 'enhanced') { Apply-Hedges $xp $ho } else { Restore-Hedges $xp $ho } }
+    if ($hedgeChange) {
+        if ($want -eq 'enhanced' -or $want -eq 'Knicks') { if ($ho.Overall -ne 'enhanced') { Apply-Hedges $xp $ho } }
+        elseif ($ho.Overall -ne 'default') { Restore-Hedges $xp $ho }
+        if ($want -eq 'Knicks') {
+            Write-Knicks $xp $hf $hp
+            Write-Host "  Knicks (northern Germany/Denmark): library Custom Scenery\$KnickDir" -ForegroundColor Green
+            if (-not (Test-Path -LiteralPath (Get-IniPath $xp))) { Warn '  scenery_packs.ini not found - start X-Plane once, then run Check & repair.' }
+        } elseif ($ki.On) { Remove-Knicks $xp; Write-Host '  Knicks removed.' -ForegroundColor Green }
+    }
     Write-Host ''
     Write-Host '  Done! You can start X-Plane now. Type Q and press Enter to close this window.' -ForegroundColor Green
 }
@@ -959,6 +1144,7 @@ function Invoke-RestoreAll($xp, $targets) {
     $ok = Invoke-Restore $xp $targets
     $ho = Get-HedgeOverview $xp
     if ($ho.Files.Count -and $ho.Overall -ne 'default') { Restore-Hedges $xp $ho }
+    if ((Get-KnickInfo $xp).On) { Remove-Knicks $xp; Write-Host '  Knicks removed.' -ForegroundColor Green }
     if ($ok) { Write-Host ''; Write-Host '  Done! You can start X-Plane now. Type Q and press Enter to close this window.' -ForegroundColor Green }
 }
 
@@ -971,8 +1157,9 @@ function Show-Status($xp, $targets) {
     if ($st.N) { Write-Host "   ($(Format-Forest $st.X $st.H $st.HP))" -ForegroundColor Green } else { Write-Host '' }
     Write-Host ("  Original (tweakable) : $($st.NOrig)" + $(if ($st.N -and $st.NOrig) { '   -> run Choose settings to tweak them' } else { '' }))
     Write-Host "  Grass/shrubs (kept)  : $($st.NSkip)"
-    if ($st.NOld) { Warn "  From an older version: $($st.NOld) files -> run Choose settings once for the 1.4 improvements" }
+    if ($st.NOld) { Warn "  From an older version: $($st.NOld) files -> run Choose settings once for the latest improvements" }
     Write-Host "  simHeaven hedges     : $(Get-HedgeStatusText $ho)"
+    if ((Get-KnickInfo $xp).On) { Write-Host '  Knicks               : on (northern Germany/Denmark: hedges and tree rows as Knicks)' }
     $other = @(Get-OtherForestAddons $xp)
     if ($other.Count) {
         Write-Host ''
@@ -1041,6 +1228,12 @@ function Invoke-CheckRepair($xp, $targets) {
     Write-Host "  Log lines of missing files     : $($gone + $hgone.Count) removed"
     Write-Host "  Unused backups / temp files    : $orphans / $tmp removed"
     Write-Host "  Empty backup folders           : $empty removed"
+    $ki = Get-KnickInfo $xp
+    if ($ki.On) {
+        # rewrite the Knick library (missing textures etc.) and fix its place in scenery_packs.ini
+        Write-Knicks $xp $ki.H $ki.HP
+        Write-Host '  Knicks library                 : checked, listed above simHeaven in scenery_packs.ini'
+    }
     TLog "check: ok $okGz, reset $reset, gone $gone, orphans $orphans, tmp $tmp, empty dirs $empty, bad $bad ($(Took $t0))"
     if ($bad) {
         Write-Host ''
@@ -1069,7 +1262,7 @@ try {
     if (Test-XPRunning) { Warn '  X-Plane is running - please quit it before changing anything.' }
     $st = Get-ForestState $xp $targets
     $ho = Get-HedgeOverview $xp
-    Write-Host "  Status  : $(Get-StatusLine $st $ho.Overall)"
+    Write-Host "  Status  : $(Get-StatusLine $st $(if ($ho.Overall) { Get-HedgeChoice $xp $ho.Overall } else { $null }))"
     Show-EnvHints $xp $targets $gf $ver[0] $ver[1]
     if ($upd) {
         try {
