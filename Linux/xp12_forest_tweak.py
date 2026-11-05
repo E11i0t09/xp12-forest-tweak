@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 XP12 Forest Tweak - macOS / Linux version
-Version 1.4.1
+Version 1.5.0
 
 Denser forests and optionally smaller trees for X-Plane 12.
 Same logic and same backup log as the Windows (PowerShell) version, so a tweak made
@@ -11,6 +11,9 @@ What it does
 - Tree spacing: SPACING and RANDOM in the forest files (.for) are multiplied by a factor
   (0.7 = about twice as many trees per area). The vegetation slider in X-Plane can never
   go above the density set there.
+- RANDOM (how far a tree may move away from its grid position) is set to at least half the
+  tree spacing in natural forests, so dense forests show no lines from the planting grid.
+  Planted rows (orchards etc.) keep their grid.
 - Global Forests v2 "cropland" forests (field trees and hedgerows between fields) get an
   extra factor of 0.8 on top, so field edges are filled more evenly. Sparse Global Forests v2
   forests (density classes 25 and 50) get an extra 0.75 / 0.85, so they look less empty.
@@ -31,17 +34,20 @@ What it does
 - Actions are written to <X-Plane>/ForestDensityTweak/tool.log (helpful for bug reports).
 
 Needs only Python 3.8 or newer, no extra packages.
-Use at your own risk. Free community project - CC BY-NC-SA 4.0, see LICENSE.
+Use at your own risk.
+(c) E11i0t09. Free community project, not for sale. License: CC BY-NC-SA 4.0 with additional permission (free use also for companies and flight schools), see the LICENSE file.
 """
 
 import gzip
 import hashlib
 import json
+import math
 import multiprocessing
 import os
 import re
 import shutil
 import signal
+import struct
 import subprocess
 import sys
 import threading
@@ -49,7 +55,7 @@ import time
 from collections import Counter
 from decimal import Decimal, ROUND_HALF_UP
 
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 TESTED_XP = (12, 4)      # X-Plane version the tool was tested with
 REPO = "E11i0t09/xp12-forest-tweak"
 THRESHOLD = 3.1          # files with a smaller tree spacing are grass/shrubs/hedges -> kept
@@ -59,7 +65,11 @@ PRESETS = [("Natural", 0.8, "noticeably denser"),
 DEFAULT_FAC = 0.7        # preset [2]
 MIN_FAC = 0.4
 MIN_HEIGHT = 0.5         # lowest allowed height factor
+HEIGHT_PRESETS = [("Original", 1.0, "trees as in X-Plane"), ("Slightly smaller", 0.8, "20 % smaller"),
+                  ("Smaller", 0.7, "30 % smaller"), ("Much smaller", 0.6, "40 % smaller")]
 CROP_FAC = 0.8           # extra spacing factor for Global Forests v2 cropland forests
+RANDOM_TARGET = 0.5      # RANDOM at least half the tree spacing (no empty strips between grid rows)
+RANDOM_MIN_RATIO = 0.25  # below this ratio the forest is a planted row grid on purpose (orchards etc.)
 SPARSE_FAC = {"25": 0.75, "50": 0.85}   # extra spacing factor for sparse Global Forests v2 density classes
 SPARSE_RX = re.compile(r"_(25|50)_y\d+\.for$")
 TWEAK_DIR = "ForestDensityTweak"   # folder name kept from earlier versions (shared with Windows)
@@ -313,7 +323,7 @@ def other_forest_addons(xp):
     out = []
     for name in sorted(os.listdir(os.path.join(xp, "Custom Scenery"))):
         low = name.lower()
-        if not os.path.isdir(os.path.join(xp, "Custom Scenery", name)) or low.startswith(("simheaven", "global_forests", "global forests", KNICK_DIR.lower())):
+        if not os.path.isdir(os.path.join(xp, "Custom Scenery", name)) or low.startswith(("simheaven", "global_forests", "global forests", "xp12_foresttweak")):
             continue
         if OTHER_FOREST_RX.search(name) and packs.get(low, True):
             out.append(name)
@@ -617,11 +627,38 @@ def stored_effective(e):
     return float(e.get("xe", e["x"])), float(e.get("he", get_h(e)))
 
 
+def scale_head(head, xe):
+    """SPACING and RANDOM times xe. For natural forests (RANDOM 0.25 - 0.5 x SPACING) RANDOM is raised to
+    half the tree spacing: below that X-Plane leaves empty strips between the grid rows, which show up as
+    lines in dense forests. Planted rows (RANDOM below 0.25 x SPACING, e.g. orchards) keep their grid."""
+    sp = next(((float(m.group(4)), float(m.group(6))) for m in LINE_RX.finditer(head) if m.group(2) == "SPACING"), None)
+
+    def val(v, s, is_random):
+        n = v * xe
+        if is_random and s > 0 and RANDOM_MIN_RATIO <= v / s < RANDOM_TARGET:
+            n = RANDOM_TARGET * s * xe
+        return fmt(n)
+
+    def sub(m):
+        rnd_line = m.group(2) == "RANDOM" and sp is not None
+        sx, sz = sp if sp else (0.0, 0.0)
+        return (m.group(1) + m.group(2) + m.group(3) + val(float(m.group(4)), sx, rnd_line)
+                + m.group(5) + val(float(m.group(6)), sz, rnd_line))
+    return LINE_RX.sub(sub, head)
+
+
 def outdated(r, e):
-    """Tweaked with values that differ from the 1.4 rules for its settings (e.g. cropland from 1.3)."""
+    """Tweaked with values that differ from the current rules for its settings (e.g. cropland from 1.3,
+    RANDOM from 1.4.1 or older)."""
     want = effective(r, float(e["x"]), get_h(e), get_hp(e))
     have = stored_effective(e)
-    return abs(want[0] - have[0]) > 1e-9 or abs(want[1] - have[1]) > 1e-9
+    if abs(want[0] - have[0]) > 1e-9 or abs(want[1] - have[1]) > 1e-9:
+        return True
+    if want[0] < 1.0 and e.get("o") and e.get("n"):
+        exp = [m.group(0) for m in LINE_RX.finditer(scale_head("\n".join(as_list(e["o"])), want[0]))]
+        if exp != as_list(e["n"]):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------- progress with remaining time
@@ -761,9 +798,7 @@ def tweak_job(job):
     if do_trees and len(TREE_RX.findall(fo.data.decode("latin-1"))) != len(fo.tlines):
         do_trees, odd = False, True     # safety: all TREE lines of the file must be in the tree list at the end
     if xe < 1.0:
-        new_head = LINE_RX.sub(lambda m: m.group(1) + m.group(2) + m.group(3)
-                               + fmt(float(m.group(4)) * xe) + m.group(5)
-                               + fmt(float(m.group(6)) * xe), fo.head)
+        new_head = scale_head(fo.head, xe)
     new_mid, meshes = None, set()
     if do_trees:
         # min and max height scaled alike -> the height variation shrinks with them
@@ -868,6 +903,7 @@ def apply_values(xp, targets, fac, hf, hp):
                 lf.flush()
                 os.fsync(lf.fileno())
                 f = by_rel[r]
+                drop_sides(f)                    # kept copies of the quick switch belong to the old state
                 os.replace(f + ".fdt_tmp", f)
                 log[r] = entry
                 done += 1
@@ -945,6 +981,7 @@ def restore(xp, targets, quiet=False):
             pr.update(units, i, len(files))
             r = rel(xp, f)
             e = log[r]
+            drop_sides(f)
             fo = ForFile(f, quick=True)
             bp = backup_path(xp, r)
             if state(fo, e) != "tweaked":
@@ -1133,14 +1170,34 @@ KNICK_SEASONS = (("spr", "trees_bb1_ALB_sp", "trees_bb1_ALB", "trees_bb1_SM"),
 KNICK_TEXTURES = ("trees_bb1_ALB", "trees_bb1_ALB_sp", "trees_bb1_ALB_fa", "trees_bb1_ALB_wi",
                   "trees_bb1_NML", "trees_bb1_SM", "trees_bb1_SM_wi")
 #   s     t     w    h    off  freq min  max   kind  name   (kind b = bush, t = tree)
-KNICK_HEDGE = ((224, 2848, 118, 124, 59, 23, 4, 6, "b", "decid_03"),
-               (1900, 2848, 128, 124, 64, 23, 4, 6, "b", "sorbus_07"),
-               (1792, 2848, 108, 124, 54, 23, 4, 5.5, "b", "lilac_06"),
-               (332, 2080, 110, 124, 55, 23, 4.5, 6, "b", "locust_01"),
-               (880, 3584, 170, 252, 85, 2, 12, 18, "t", "oak1_07"),
-               (1050, 3584, 104, 252, 52, 2, 13, 18, "t", "oak1_08"),
-               (1452, 3584, 190, 252, 95, 2, 12, 17, "t", "ash_07"),
-               (776, 2976, 184, 252, 92, 2, 12, 16, "t", "maple_07"))
+# Knick (heights at tree height 1.0, the tree height factor is applied on top):
+#   bushes in three sizes (1.5-3, 3-5, 5-8 m), Ueberhaelter in three ages (6-9, 9-12, 12-14 m).
+#   HEIGHT_PARAMS: heights change in sections of about 100 m (like a Knick cut a few years ago next to an
+#   old one) instead of from tree to tree. CHOICE_PARAMS + GROUP: sections of pure bushes and sections with
+#   Ueberhaelter, about 40 / 60 %.
+#   s     t     w    h    off  freq min  max  kind  name   (kind b = bush, t = tree)
+KNICK_HEDGE = (("P", "HEIGHT_PARAMS 100 0.7 25 0.3 0 0 0 0"), ("P", "CHOICE_PARAMS 150 0.8 30 0.2 0 0 0 0"),
+               ("G", 40),                                                     # pure bush sections
+               (224, 2848, 118, 124, 59, 18, 1.5, 3, "b", "decid_03"),
+               (224, 2848, 118, 124, 59, 14, 3, 5, "b", "decid_03"),
+               (1900, 2848, 128, 124, 64, 16, 3, 5, "b", "sorbus_07"),
+               (1900, 2848, 128, 124, 64, 10, 5, 8, "b", "sorbus_07"),
+               (1792, 2848, 108, 124, 54, 16, 1.5, 3, "b", "lilac_06"),
+               (1792, 2848, 108, 124, 54, 10, 3, 5, "b", "lilac_06"),
+               (332, 2080, 110, 124, 55, 16, 5, 8, "b", "locust_01"),
+               ("G", 60),                                                     # sections with Ueberhaelter
+               (224, 2848, 118, 124, 59, 14, 1.5, 3, "b", "decid_03"),
+               (224, 2848, 118, 124, 59, 12, 3, 5, "b", "decid_03"),
+               (1900, 2848, 128, 124, 64, 13, 3, 5, "b", "sorbus_07"),
+               (1900, 2848, 128, 124, 64, 9, 5, 8, "b", "sorbus_07"),
+               (1792, 2848, 108, 124, 54, 13, 1.5, 3, "b", "lilac_06"),
+               (1792, 2848, 108, 124, 54, 8, 3, 5, "b", "lilac_06"),
+               (332, 2080, 110, 124, 55, 14, 5, 8, "b", "locust_01"),
+               (776, 2976, 184, 252, 92, 4, 6, 9, "t", "maple_07"),
+               (1452, 3584, 190, 252, 95, 4, 9, 12, "t", "ash_07"),
+               (1050, 3584, 104, 252, 52, 3, 9, 12, "t", "oak1_08"),
+               (880, 3584, 170, 252, 85, 4, 12, 14, "t", "oak1_07"),
+               (1050, 3584, 104, 252, 52, 2, 12, 14, "t", "oak1_08"))
 KNICK_ROW = ((880, 3584, 170, 252, 85, 8, 12, 20, "t", "oak1_07"),
              (1050, 3584, 104, 252, 52, 8, 12, 18, "t", "oak1_08"),
              (1154, 3584, 128, 252, 64, 7, 12, 19, "t", "oak1_09"),
@@ -1160,12 +1217,16 @@ KNICK_SCRUB = ((224, 2848, 118, 124, 59, 25, 2.5, 5, "b", "decid_03"),
                (332, 2080, 110, 124, 55, 24, 3, 6, "b", "locust_01"),
                (294, 3584, 118, 252, 59, 2, 6, 10, "s", "birch_07"),
                (1296, 2976, 110, 252, 55, 1, 6, 10, "s", "aspen_05"))
-KNICK_KINDS = (("knick", "Knick: dense row of bushes plus single trees about every 10 m",
+KNICK_KINDS = (("knick", "Knick: bushes in three sizes plus Ueberhaelter in sections",
                 "0.8", "0.8", "8000", KNICK_HEDGE, "simheaven/forests/hedge.for"),
                ("treerow", "Knick tree row: mixed broadleaf trees plus bushes in between",
                 "2.5", "1.2", "10000", KNICK_ROW, "simheaven/forests/random_tree.for"),
                ("scrub", "Knick scrub: dense bushes 2-6 m with a few small trees",
-                "3", "1.5", "8000", KNICK_SCRUB, "simheaven/forests/shrubs.for"))
+                "3", "1.5", "8000", KNICK_SCRUB, "simheaven/forests/shrubs.for"),
+               ("knickmap", "Knick of the hedgerow map: bushes in three sizes plus Ueberhaelter (1.6 m strips)",
+                "1.0", "0.8", "8000", KNICK_HEDGE, None))
+# Knick areas outside the tiles of the hedgerow map (there the map replaces the simHeaven hedges)
+KNICK_RECTS_NO_MAP = ("7 52 9 52", "7 53 8 53", "11 53 11 53", "12 54 12 54", "8 55 12 55", "14 55 14 55", "8 56 11 57")
 
 
 def knick_path(xp):
@@ -1183,6 +1244,26 @@ def knick_info(xp):
     except OSError:
         pass
     return False, None, None
+
+
+def knick_lib_version(xp):
+    try:
+        with open(os.path.join(knick_path(xp), "library.txt"), encoding="latin-1") as f:
+            for line in f.read(2000).splitlines():
+                m = re.match(re.escape(KNICK_MARK) + r"\s+(\S+)", line)
+                if m:
+                    return m.group(1)
+    except OSError:
+        pass
+    return None
+
+
+def knick_has_map(xp):
+    try:
+        with open(os.path.join(knick_path(xp), "library.txt"), encoding="latin-1") as f:
+            return any(l.startswith(KNICK_MARK) and l.rstrip().endswith("| map") for l in f.read(2000).splitlines())
+    except OSError:
+        return False
 
 
 def knick_texture_src(xp, name):
@@ -1216,13 +1297,19 @@ def ini_read(xp):
     return raw.split(nl), nl
 
 
+def pack_line_is(line, folder):
+    """True for the scenery_packs.ini line of exactly this Custom Scenery folder (enabled or disabled)."""
+    m = re.match(r"(?i)^SCENERY_PACK(?:_DISABLED)?\s+Custom Scenery/(.+?)/?\s*$", line)
+    return bool(m) and m.group(1).lower() == folder.lower()
+
+
 def ini_place(xp):
     """Lists the Knick library directly above the simHeaven Vegetation Library. True if changed."""
     lines, nl = ini_read(xp)
     if lines is None:
         return False          # X-Plane creates the file on its next start; new packs are added then
     mine = f"SCENERY_PACK Custom Scenery/{KNICK_DIR}/"
-    rest = [l for l in lines if KNICK_DIR not in l]
+    rest = [l for l in lines if not pack_line_is(l, KNICK_DIR)]
     i = next((k for k, l in enumerate(rest) if re.search(r"(?i)simheaven.*vegetation.*librar", l)), None)
     if i is None:
         i = next((k for k, l in enumerate(rest) if l.startswith("SCENERY_PACK")), len(rest))
@@ -1235,13 +1322,14 @@ def ini_place(xp):
 
 def ini_unlist(xp):
     lines, nl = ini_read(xp)
-    if lines is None or not any(KNICK_DIR in l for l in lines):
+    if lines is None or not any(pack_line_is(l, KNICK_DIR) for l in lines):
         return
-    ini_write(xp, [l for l in lines if KNICK_DIR not in l], nl)
+    ini_write(xp, [l for l in lines if not pack_line_is(l, KNICK_DIR)], nl)
 
 
-def knick_write(xp, h, hp):
-    """Creates or updates the Knick library for tree height h / profile hp."""
+def knick_write(xp, h, hp, kmap=False):
+    """Creates or updates the Knick library for tree height h / profile hp. kmap: the hedgerow map of
+    Schleswig-Holstein is installed -> its tiles get empty simHeaven hedges/tree rows (the map has them)."""
     d = knick_path(xp)
     os.makedirs(d, exist_ok=True)
     for name in KNICK_TEXTURES:
@@ -1264,20 +1352,43 @@ def knick_write(xp, h, hp):
                    "\tBLEND_HASH 0.5", "\tSUPER_ROUGHNESS 1.0", "\tNORMAL_TRANSLUCENCY", "",
                    f"LOD {lod}", "SCALE_X 2048", "SCALE_Y 4096", f"SPACING {spacing} {spacing}",
                    f"RANDOM {rand} {rand}", "", "#\ts\tt\tw\th\toff\tfreq\tmin\tmax\tquads\tlayer\tname"]
-            for s_, t_, w_, h_, off, freq, mn, mx, k, name in rows:
+            for row in rows:
+                if row[0] == "P":              # perlin noise parameters
+                    out.append(row[1])
+                    continue
+                if row[0] == "G":              # tree group with its share of the forest
+                    out.append(f"GROUP 0 {row[1]}")
+                    continue
+                s_, t_, w_, h_, off, freq, mn, mx, k, name = row
                 f = h if k == "t" else hb      # small trees in scrub scale like bushes
                 out.append(f"TREE\t{s_}\t{t_}\t{w_}\t{h_}\t{off}\t{freq}\t{fmt(mn * f)}\t{fmt(mx * f)}\t2\t0\t{name}")
             write_bytes(os.path.join(d, f"{kind}_{season}.for"), ("\r\n".join(out) + "\r\n").encode("ascii"))
-    lib = ["A", "800", "LIBRARY", "", f"{KNICK_MARK} {VERSION} | height {fmt(h)} {hp}",
+    blank = ["A", "1200", "FOREST", "", f"{KNICK_MARK} {VERSION} - do not edit, Restore original removes it",
+             "# empty forest: hides the simHeaven hedges and tree rows where the hedgerow map has them", "",
+             "TEXTURE trees_bb1_ALB.png", "LOD 1", "SCALE_X 2048", "SCALE_Y 4096", "SPACING 10000 10000", "RANDOM 0 0",
+             "TREE\t224\t2848\t118\t124\t59\t100\t0.1\t0.1\t2\t0\tnone"]
+    write_bytes(os.path.join(d, "blank.for"), ("\r\n".join(blank) + "\r\n").encode("ascii"))
+    lib = ["A", "800", "LIBRARY", "", f"{KNICK_MARK} {VERSION} | height {fmt(h)} {hp}" + (" | map" if kmap else ""),
            "# Knicks: replaces the simHeaven X-World hedges, tree rows and scrub only in the Knick areas",
            f"# ({KNICK_AREA}).",
-           "# simHeaven files are not changed. Restore original removes this folder.", "",
-           "REGION_DEFINE xp12_foresttweak_knicks_north"] + [f"REGION_RECT {r}" for r in KNICK_RECTS] + [
-           "REGION xp12_foresttweak_knicks_north", ""]
+           "# simHeaven files are not changed. Restore original removes this folder.", ""]
+    for season, *_ in KNICK_SEASONS:
+        lib.append(f"EXPORT_SEASON {season} {SH_VPATH_KNICK} knickmap_{season}.for")
+        lib.append(f"EXPORT_SEASON {season} {SH_VPATH_ROW} treerow_{season}.for")
+    lib += ["", "REGION_DEFINE xp12_foresttweak_knicks_north"] + [f"REGION_RECT {r}" for r in (KNICK_RECTS_NO_MAP if kmap else KNICK_RECTS)] + [
+            "REGION xp12_foresttweak_knicks_north", ""]
     for kind, *_rest in KNICK_KINDS:
         vpath = _rest[-1]
+        if vpath:
+            for season, *_ in KNICK_SEASONS:
+                lib.append(f"EXPORT_EXCLUDE_SEASON {season} {vpath} {kind}_{season}.for")
+    if kmap:
+        lib += ["", "# tiles of the hedgerow map (Schleswig-Holstein): its Knicks and tree rows replace the simHeaven ones",
+                "REGION_DEFINE xp12_foresttweak_knick_map"] + [f"REGION_RECT {r}" for r in SH_RECTS] + ["REGION xp12_foresttweak_knick_map", ""]
         for season, *_ in KNICK_SEASONS:
-            lib.append(f"EXPORT_EXCLUDE_SEASON {season} {vpath} {kind}_{season}.for")
+            lib.append(f"EXPORT_EXCLUDE_SEASON {season} simheaven/forests/hedge.for blank.for")
+            lib.append(f"EXPORT_EXCLUDE_SEASON {season} simheaven/forests/random_tree.for blank.for")
+            lib.append(f"EXPORT_EXCLUDE_SEASON {season} simheaven/forests/shrubs.for scrub_{season}.for")
     write_bytes(os.path.join(d, "library.txt"), ("\r\n".join(lib) + "\r\n").encode("ascii"))
     moved = ini_place(xp)
     tlog(f"knicks: library written (height {h} {hp}), scenery_packs.ini {'updated' if moved else 'ok'}")
@@ -1286,7 +1397,7 @@ def knick_write(xp, h, hp):
 def knick_remove(xp):
     d = knick_path(xp)
     if os.path.isdir(d):
-        names = {"library.txt"} | {f"{k[0]}_{s[0]}.for" for k in KNICK_KINDS for s in KNICK_SEASONS}
+        names = {"library.txt", "blank.for"} | {f"{k[0]}_{s[0]}.for" for k in KNICK_KINDS for s in KNICK_SEASONS}
         for name in KNICK_TEXTURES:
             names |= {name + ".dds", name + ".png"}
         for n in os.listdir(d):
@@ -1298,6 +1409,573 @@ def knick_remove(xp):
             warn(f"  Folder Custom Scenery/{KNICK_DIR} has other files in it and was left in place (inactive).")
     ini_unlist(xp)
     tlog("knicks: removed")
+
+
+# ---------------------------------------------------------------- hedgerow map (optional, with Knicks)
+# With Knicks on, the tool can use the official map of all Knicks (hedgerows), field hedges, tree rows and
+# avenues of Schleswig-Holstein (Biotopkartierung SH4, LLUR SH, CC BY 4.0). It comes with the tool as
+# hedgerow_map_sh.dat (lines only, converted from the original shapefile) and is turned into X-Plane
+# scenery tiles on this computer. Where the map has nothing (Denmark, Lower Saxony, Mecklenburg, gardens),
+# the simHeaven hedges and tree rows of this computer are taken over (they are not shipped).
+SH_URL = "https://opendata.schleswig-holstein.de/dataset/sh4-biotopkartierung-der-alleen-knicks-feldhecken-und-baumreihen"
+SH_FILE = "hedgerow_map_sh.dat"
+SH_DIR = "XP12_ForestTweak_HedgerowMap"           # scenery pack with the generated DSF tiles
+SH_TILES = ((53, 9), (53, 10), (54, 8), (54, 9), (54, 10), (54, 11))   # (south, west), tiles with SH data
+SH_RECTS = ("9 53 10 53", "8 54 11 54")           # the same tiles as library regions
+SH_ATTRIB = "LLUR SH, Biotopkartierung SH4 (Alleen, Knicks, Feldhecken, Baumreihen, 2023), CC BY 4.0"
+SH_MARK = "# generated by XP12 Forest Tweak"
+SH_VPATH_KNICK = "xp12_foresttweak/knick_map.for"
+SH_VPATH_ROW = "xp12_foresttweak/treerow_map.for"
+SH_HALF_WIDTH = 0.8       # Knick strip: 1.6 m wide
+SH_ROW_STEP = 7.0         # tree row: a tree about every 7 m
+SH_AVENUE_STEP = 8.0      # avenue: two rows 5 m left and right of the line, a tree about every 8 m
+SH_AVENUE_OFF = 5.0
+SH_DUP_CELL = 20.0        # simHeaven feature counts as a duplicate when half of it lies within 20-40 m of SH data
+P_AREA, P_POINT = 255, 767  # DSF forest parameter: density 255, +512 = point mode (one tree per vertex)
+GRS_A, GRS_F, UTM_K0 = 6378137.0, 1 / 298.257222101, 0.9996
+DEG = 180.0 / math.pi
+
+
+def hyp(x, y):
+    """sqrt(x*x + y*y), written out so both tool versions compute exactly the same."""
+    return math.sqrt(x * x + y * y)
+
+
+class Lcg:
+    """Small deterministic random generator, the same in both tool versions."""
+    def __init__(self, seed):
+        self.s = seed & 0xFFFFFFFF
+
+    def next(self):
+        self.s = (self.s * 1664525 + 1013904223) & 0xFFFFFFFF
+        return self.s / 4294967296.0
+
+
+def _utm_consts():
+    n = GRS_F / (2 - GRS_F)
+    n2 = n * n
+    n3 = n2 * n
+    A = GRS_A / (1 + n) * (1 + n2 / 4 + n2 * n2 / 64)
+    beta = (n / 2 - 2 * n2 / 3 + 37 * n3 / 96, n2 / 48 + n3 / 15, 17 * n3 / 480)
+    delta = (2 * n - 2 * n2 / 3 - 2 * n3, 7 * n2 / 3 - 8 * n3 / 5, 56 * n3 / 15)
+    return A, beta, delta
+
+
+UTM_A, UTM_BETA, UTM_DELTA = _utm_consts()
+
+
+def utm32_to_ll(e, n):
+    """EPSG 4647 (ETRS89 / UTM 32 with leading 32 in the easting) -> (lon, lat) in degrees (Krueger series)."""
+    xi = n / (UTM_K0 * UTM_A)
+    eta = (e - 32500000.0) / (UTM_K0 * UTM_A)
+    xp, ep = xi, eta
+    for j in range(3):
+        k = 2 * (j + 1)
+        xp -= UTM_BETA[j] * math.sin(k * xi) * math.cosh(k * eta)
+        ep -= UTM_BETA[j] * math.cos(k * xi) * math.sinh(k * eta)
+    chi = math.asin(math.sin(xp) / math.cosh(ep))
+    phi = chi
+    for j in range(3):
+        phi += UTM_DELTA[j] * math.sin(2 * (j + 1) * chi)
+    lon = 9.0 + math.atan2(math.sinh(ep), math.cos(xp)) * DEG
+    return lon, phi * DEG
+
+
+def sh_map_file():
+    """The hedgerow map shipped with the tool: next to it, or one folder up (ZIP with all systems)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for d in (here, os.path.dirname(here), os.path.join(os.path.dirname(here), "data")):
+        p = os.path.join(d, SH_FILE)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def sh_pack(xp):
+    return os.path.join(xp, "Custom Scenery", SH_DIR)
+
+
+def sh_info(xp):
+    """True if the hedgerow map pack was generated by this tool."""
+    try:
+        with open(os.path.join(sh_pack(xp), "hedgerow_map.txt"), encoding="latin-1") as f:
+            return f.read(200).startswith(SH_MARK)
+    except OSError:
+        return False
+
+
+def _varint(b, o):
+    v = sh = 0
+    while True:
+        c = b[o]
+        o += 1
+        v |= (c & 0x7F) << sh
+        if not c & 0x80:
+            return v, o
+        sh += 7
+
+
+def sh_read_lines(path):
+    """Reads the hedgerow map: {tile: {code: [[(lon, lat), ...], ...]}} for SH_TILES."""
+    b = gzip.decompress(open(path, "rb").read())
+    if b[:8] != b"XFTHMAP1":
+        raise RuntimeError("hedgerow map: unknown file format")
+    nl = struct.unpack_from("<I", b, 8)[0]
+    tiles = {t: {"HW": [], "HF": [], "HR": [], "HA": []} for t in SH_TILES}
+    names = ("HW", "HF", "HR", "HA")
+    o = 16
+    for _ in range(nl):
+        code = names[b[o]]
+        n, o = _varint(b, o + 1)
+        e = nn = 0
+        pts = []
+        for _k in range(n):
+            de, o = _varint(b, o)
+            dn, o = _varint(b, o)
+            e += (de >> 1) ^ -(de & 1)
+            nn += (dn >> 1) ^ -(dn & 1)
+            pts.append(utm32_to_ll(e / 10.0, nn / 10.0))
+        lo = [p[0] for p in pts]
+        la = [p[1] for p in pts]
+        for (s, w) in SH_TILES:
+            if max(lo) < w or min(lo) > w + 1 or max(la) < s or min(la) > s + 1:
+                continue
+            for piece in clip_line(pts, w, s):
+                tiles[(s, w)][code].append(piece)
+    return tiles
+
+
+def clip_line(pts, w, s):
+    """Pieces of a polyline inside the tile [w, w+1] x [s, s+1] (Liang-Barsky per segment)."""
+    out, cur = [], []
+    for p0, p1 in zip(pts, pts[1:]):
+        x0, y0 = p0
+        dx, dy = p1[0] - x0, p1[1] - y0
+        u0, u1, ok = 0.0, 1.0, True
+        for p, q in ((-dx, x0 - w), (dx, w + 1 - x0), (-dy, y0 - s), (dy, s + 1 - y0)):
+            if p == 0:
+                if q < 0:
+                    ok = False
+            else:
+                u = q / p
+                if p < 0:
+                    u0 = max(u0, u)
+                else:
+                    u1 = min(u1, u)
+        if not ok or u0 > u1:
+            if len(cur) > 1:
+                out.append(cur)
+            cur = []
+            continue
+        a = (x0 + u0 * dx, y0 + u0 * dy)
+        b = (x0 + u1 * dx, y0 + u1 * dy)
+        if cur and cur[-1] == a:
+            cur.append(b)
+        else:
+            if len(cur) > 1:
+                out.append(cur)
+            cur = [a, b]
+    if len(cur) > 1:
+        out.append(cur)
+    return out
+
+
+class TileGeo:
+    """Local metres <-> degrees for one tile."""
+    def __init__(self, s, w):
+        self.s, self.w = s, w
+        self.ky = 110574.0
+        self.kx = 111320.0 * math.cos((s + 0.5) / DEG)
+
+    def to_m(self, p, o):
+        return ((p[0] - o[0]) * self.kx, (p[1] - o[1]) * self.ky)
+
+    def to_ll(self, m, o):
+        return (o[0] + m[0] / self.kx, o[1] + m[1] / self.ky)
+
+    def clamp(self, p):
+        return (min(max(p[0], self.w), self.w + 1), min(max(p[1], self.s), self.s + 1))
+
+
+def resample(g, line, step, rng):
+    """Points every `step` metres along the line (random start), with their direction."""
+    o = line[0]
+    pts = [g.to_m(p, o) for p in line]
+    out, acc, nxt = [], 0.0, step * rng.next()
+    for a, b in zip(pts, pts[1:]):
+        L = hyp(b[0] - a[0], b[1] - a[1])
+        if L == 0:
+            continue
+        ux, uy = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+        while nxt <= acc + L:
+            d = nxt - acc
+            out.append(((a[0] + ux * d, a[1] + uy * d), (ux, uy)))
+            nxt += step
+        acc += L
+    return o, out
+
+
+def ribbon(g, line, half):
+    """Closed strip of +-half metres around the line, counter-clockwise (like the simHeaven hedges)."""
+    o = line[0]
+    pts = [g.to_m(p, o) for p in line]
+    q = [pts[0]]
+    for p in pts[1:]:
+        if hyp(p[0] - q[-1][0], p[1] - q[-1][1]) > 0.3:
+            q.append(p)
+    if len(q) < 2:
+        return None
+    n = []
+    for a, b in zip(q, q[1:]):
+        L = hyp(b[0] - a[0], b[1] - a[1])
+        n.append(((b[1] - a[1]) / L, -(b[0] - a[0]) / L))
+    left, right = [], []
+    for i, p in enumerate(q):
+        if i == 0:
+            nx, ny = n[0]
+        elif i == len(q) - 1:
+            nx, ny = n[-1]
+        else:
+            nx, ny = n[i - 1][0] + n[i][0], n[i - 1][1] + n[i][1]
+            L = hyp(nx, ny)
+            if L < 1e-6:
+                nx, ny = n[i]
+            else:
+                nx, ny = nx / L, ny / L
+                c = nx * n[i][0] + ny * n[i][1]
+                f = 1 / max(c, 0.5)
+                nx, ny = nx * f, ny * f
+        right.append(g.to_ll((p[0] + nx * half, p[1] + ny * half), o))
+        left.append(g.to_ll((p[0] - nx * half, p[1] - ny * half), o))
+    return right + left[::-1]
+
+
+# --- DSF reading (simHeaven tile) and writing
+def dsf_atoms(b, o, end):
+    while o < end:
+        aid, ln = struct.unpack_from("<4sI", b, o)
+        yield aid[::-1].decode("latin-1"), b[o + 8:o + ln]
+        o += ln
+
+
+def dsf_strings(d):
+    return [s.decode("utf-8", "replace") for s in d.split(b"\0")[:-1]]
+
+
+def dsf_plane(d, o, n):
+    enc = d[o]
+    o += 1
+    vals = []
+    if enc in (0, 1):
+        vals = list(struct.unpack_from(f"<{n}H", d, o))
+        o += 2 * n
+    else:
+        while len(vals) < n:
+            c = d[o]
+            o += 1
+            if c & 0x80:
+                v = struct.unpack_from("<H", d, o)[0]
+                o += 2
+                vals += [v] * (c & 0x7F)
+            else:
+                vals += list(struct.unpack_from(f"<{c}H", d, o))
+                o += 2 * c
+    if enc in (1, 3):
+        acc, out = 0, []
+        for v in vals:
+            acc = (acc + v) & 0xFFFF
+            out.append(acc)
+        vals = out
+    return vals, o
+
+
+def dsf_read_lines(path, wanted):
+    """Forest polygons of the given definitions in a DSF: [(name, param, [(lon, lat), ...]), ...]."""
+    b = open(path, "rb").read()
+    if b[:8] != b"XPLNEDSF":
+        raise RuntimeError(f"not a DSF file (compressed?): {path}")
+    top = {}
+    for aid, d in dsf_atoms(b, 12, len(b) - 16):
+        top.setdefault(aid, []).append(d)
+    polyd = []
+    for aid, d in dsf_atoms(top["DEFN"][0], 0, len(top["DEFN"][0])):
+        if aid == "POLY":
+            polyd = dsf_strings(d)
+    planes, scal = [], []
+    for aid, d in dsf_atoms(top["GEOD"][0], 0, len(top["GEOD"][0])):
+        if aid == "POOL":
+            n, k = struct.unpack_from("<IB", d)
+            o, pl = 5, []
+            for _ in range(k):
+                v, o = dsf_plane(d, o, n)
+                pl.append(v)
+            planes.append(pl)
+        elif aid == "SCAL":
+            scal.append(struct.unpack(f"<{len(d) // 4}f", d))
+    pools = []
+    for pl, sc in zip(planes, scal):
+        pools.append([(pl[0][i] / 65535.0 * sc[0] + sc[1], pl[1][i] / 65535.0 * sc[2] + sc[3]) for i in range(len(pl[0]))])
+    out = []
+    c = top["CMDS"][0]
+    o, pool, defn, n = 0, 0, 0, len(c)
+    sizes = {2: 4, 6: 1, 10: 4, 16: 0, 17: 1, 18: 9, 25: 4, 28: 4, 31: 4}
+
+    def add(p, idx):
+        if defn < len(polyd) and polyd[defn] in wanted:
+            out.append((polyd[defn], p, [pools[pool][i] for i in idx]))
+    while o < n:
+        cid = c[o]
+        o += 1
+        if cid == 1:
+            pool = struct.unpack_from("<H", c, o)[0]; o += 2
+        elif cid == 3:
+            defn = c[o]; o += 1
+        elif cid == 4:
+            defn = struct.unpack_from("<H", c, o)[0]; o += 2
+        elif cid == 5:
+            defn = struct.unpack_from("<I", c, o)[0]; o += 4
+        elif cid == 7:
+            o += 2
+        elif cid == 8:
+            o += 4
+        elif cid in (9, 23, 26, 29):
+            o += 1 + 2 * c[o]
+        elif cid in (11, 24, 27, 30):
+            o += 1 + 4 * c[o]
+        elif cid == 12:
+            p, k = struct.unpack_from("<HB", c, o); o += 3
+            add(p, struct.unpack_from(f"<{k}H", c, o)); o += 2 * k
+        elif cid == 13:
+            p, a, e = struct.unpack_from("<HHH", c, o); o += 6
+            add(p, range(a, e))
+        elif cid == 14:
+            p, w = struct.unpack_from("<HB", c, o); o += 3
+            first = None
+            for _ in range(w):
+                k = c[o]; o += 1
+                idx = struct.unpack_from(f"<{k}H", c, o); o += 2 * k
+                first = idx if first is None else first
+            if first:
+                add(p, first)
+        elif cid == 15:
+            p, w = struct.unpack_from("<HB", c, o); o += 3
+            ix = struct.unpack_from(f"<{w + 1}H", c, o); o += 2 * (w + 1)
+            add(p, range(ix[0], ix[1]))
+        elif cid == 32:
+            o += 1 + c[o]
+        elif cid == 33:
+            o += 2 + struct.unpack_from("<H", c, o)[0]
+        elif cid == 34:
+            o += 4 + struct.unpack_from("<I", c, o)[0]
+        elif cid in sizes:
+            o += sizes[cid]
+        else:
+            raise RuntimeError(f"unknown DSF command {cid} in {path}")
+    return out
+
+
+def dsf_write(path, s, w, defs, feats):
+    """Overlay DSF with forest polygons. feats: [(defn index, param, [(lon, lat), ...]), ...]."""
+    groups = {}
+    for f in feats:
+        x, y = f[2][0]
+        groups.setdefault((int((x - w) * 16), int((y - s) * 16)), []).append(f)
+    pools, cmd = [], bytearray()
+    for key in sorted(groups):
+        fs, i = groups[key], 0
+        while i < len(fs):
+            batch, cnt = [], 0
+            while i < len(fs) and cnt + len(fs[i][2]) <= 65000:
+                batch.append(fs[i])
+                cnt += len(fs[i][2])
+                i += 1
+            xs = [p[0] for f in batch for p in f[2]]
+            ys = [p[1] for f in batch for p in f[2]]
+            x0, y0 = struct.unpack("<ff", struct.pack("<ff", min(xs), min(ys)))
+            sx = max(max(xs) - x0, 1e-6) * 1.000001
+            sy = max(max(ys) - y0, 1e-6) * 1.000001
+            qx, qy = [], []
+            cmd += struct.pack("<BH", 1, len(pools))
+            cur = None
+            for d, prm, pts in batch:
+                if d != cur:
+                    cmd += struct.pack("<BB", 3, d)
+                    cur = d
+                idx = []
+                for p in pts:
+                    idx.append(len(qx))
+                    qx.append(min(65535, max(0, int(math.floor((p[0] - x0) / sx * 65535 + 0.5)))))
+                    qy.append(min(65535, max(0, int(math.floor((p[1] - y0) / sy * 65535 + 0.5)))))
+                cmd += struct.pack("<BHB", 12, prm, len(idx)) + struct.pack(f"<{len(idx)}H", *idx)
+            pools.append((qx, qy, (sx, x0, sy, y0)))
+
+    def atom(aid, payload):
+        return struct.pack("<4sI", aid[::-1].encode(), 8 + len(payload)) + payload
+
+    def stab(lst):
+        return b"".join(x.encode() + b"\0" for x in lst)
+    props = ["sim/planet", "earth", "sim/overlay", "1", "sim/creation_agent", f"XP12 Forest Tweak {VERSION} (hedgerow map: {SH_ATTRIB})",
+             "sim/west", str(w), "sim/east", str(w + 1), "sim/north", str(s + 1), "sim/south", str(s)]
+    head = atom("HEAD", atom("PROP", stab(props)))
+    defn = atom("DEFN", atom("TERT", b"") + atom("OBJT", b"") + atom("POLY", stab(defs)) + atom("NETW", b"") + atom("DEMN", b""))
+    geod = b"".join(atom("POOL", struct.pack("<IB", len(qx), 2) + b"\0" + struct.pack(f"<{len(qx)}H", *qx)
+                         + b"\0" + struct.pack(f"<{len(qy)}H", *qy)) for qx, qy, _ in pools)
+    geod += b"".join(atom("SCAL", struct.pack("<4f", *sc)) for _, _, sc in pools)
+    body = b"XPLNEDSF" + struct.pack("<I", 1) + head + defn + atom("GEOD", geod) + atom("CMDS", bytes(cmd))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    write_bytes(path, body + hashlib.md5(body).digest())
+    return sum(len(p[0]) for p in pools)
+
+
+def sh_simheaven_dsf(xp, s, w):
+    folder = "%+03d%+04d" % (s // 10 * 10, w // 10 * 10)
+    name = "%+03d%+04d.dsf" % (s, w)
+    p = os.path.join(xp, "Custom Scenery", "simHeaven_X-World_Europe-4-extras", "Earth nav data", folder, name)
+    return p if os.path.isfile(p) else None
+
+
+def sh_build_tile(xp, s, w, lines):
+    """One DSF tile: SH Knicks/hedges as strips, tree rows/avenues as single trees, plus the simHeaven hedges and
+    tree rows of this computer that have no SH line nearby. Returns (SH features, simHeaven kept, written path)."""
+    g = TileGeo(s, w)
+    rng = Lcg(s * 1000 + w)
+    feats = []
+    n_sh = 0
+    for code in ("HW", "HF"):
+        for line in lines[code]:
+            for i in range(0, len(line) - 1, 99):
+                r = ribbon(g, line[i:i + 100], SH_HALF_WIDTH)
+                if r:
+                    feats.append((0, P_AREA, [g.clamp(p) for p in r]))
+                    n_sh += 1
+    for code in ("HR", "HA"):
+        offs = (0.0,) if code == "HR" else (-SH_AVENUE_OFF, SH_AVENUE_OFF)
+        step = SH_ROW_STEP if code == "HR" else SH_AVENUE_STEP
+        for line in lines[code]:
+            for off in offs:
+                o, pts = resample(g, line, step, rng)
+                ll = []
+                for (px, py), (ux, uy) in pts:
+                    jx = rng.next() - 0.5
+                    jy = rng.next() - 0.5
+                    ll.append(g.clamp(g.to_ll((px + uy * off + jx, py - ux * off + jy), o)))
+                for i in range(0, len(ll), 250):
+                    feats.append((1, P_POINT, ll[i:i + 250]))
+                    n_sh += 1
+    # where the SH data has lines: 20 m cells along every line
+    cov = set()
+    for code in ("HW", "HF", "HR", "HA"):
+        for line in lines[code]:
+            o, pts = resample(g, line, 10.0, Lcg(0))
+            for p, _u in pts:
+                ll = g.to_ll(p, o)
+                cov.add((int(math.floor((ll[0] - w) * g.kx / SH_DUP_CELL)), int(math.floor((ll[1] - s) * g.ky / SH_DUP_CELL))))
+
+    def covered(p):
+        cx = int(math.floor((p[0] - w) * g.kx / SH_DUP_CELL))
+        cy = int(math.floor((p[1] - s) * g.ky / SH_DUP_CELL))
+        return any((cx + i, cy + j) in cov for i in (-1, 0, 1) for j in (-1, 0, 1))
+    kept = 0
+    shv = sh_simheaven_dsf(xp, s, w)
+    if shv:
+        for name, prm, pts in dsf_read_lines(shv, ("simheaven/forests/hedge.for", "simheaven/forests/random_tree.for")):
+            if not pts or sum(1 for p in pts if covered(p)) * 2 >= len(pts):
+                continue
+            if len(pts) > 255:
+                if prm >= 512:
+                    for i in range(0, len(pts), 250):
+                        feats.append((1, prm, pts[i:i + 250]))
+                    kept += 1
+                    continue
+                while len(pts) > 255:
+                    pts = pts[::2]
+            feats.append((0 if name.endswith("hedge.for") else 1, prm, pts))
+            kept += 1
+    path = os.path.join(sh_pack(xp), "Earth nav data", "%+03d%+04d" % (s // 10 * 10, w // 10 * 10), "%+03d%+04d.dsf" % (s, w))
+    dsf_write(path, s, w, [SH_VPATH_KNICK, SH_VPATH_ROW], feats)
+    return n_sh, kept, path
+
+
+def sh_build(xp):
+    """Turns the hedgerow map into the scenery pack SH_DIR. True if done."""
+    src = sh_map_file()
+    if not src:
+        say(f"  The hedgerow map ({SH_FILE}) is missing next to the tool - Knicks stay as in the simHeaven data.", C_RED)
+        say("  Unzip the complete tool ZIP again, then run Choose settings once more.")
+        tlog("hedgerow map: data file missing")
+        return False
+    t0 = time.time()
+    say("  Building the hedgerow map (about a minute) ...")
+    tiles = sh_read_lines(src)
+    d = sh_pack(xp)
+    os.makedirs(d, exist_ok=True)
+    total = 0
+    for i, (s, w) in enumerate(SH_TILES, 1):
+        if sys.stdout.isatty():
+            sys.stdout.write(f"\r  Hedgerow map tiles: {i} / {len(SH_TILES)}   ")
+            sys.stdout.flush()
+        n_sh, kept, _p = sh_build_tile(xp, s, w, tiles[(s, w)])
+        total += n_sh
+        tlog(f"hedgerow map: tile {s}/{w}: {n_sh} map features, {kept} simHeaven hedges/tree rows kept")
+    if sys.stdout.isatty():
+        sys.stdout.write("\r" + " " * 40 + "\r")
+    att = ["XP12 Forest Tweak - hedgerow map (made on this computer)", "",
+           "Knicks (hedgerows), Feldhecken, Baumreihen and Alleen of Schleswig-Holstein:",
+           "  Source: " + SH_ATTRIB,
+           "  https://creativecommons.org/licenses/by/4.0/",
+           "  " + SH_URL,
+           "  Changes: lines converted into X-Plane forest strips and tree rows, cut into 1x1 degree tiles.", "",
+           "Hedges and tree rows where the map has none (e.g. Denmark, gardens): taken over from the",
+           "simHeaven X-World scenery on this computer (OpenStreetMap data, (c) OpenStreetMap contributors, ODbL).",
+           "Made for use on this computer only - do not share this folder.", "",
+           "Restore original in XP12 Forest Tweak removes this folder."]
+    write_bytes(os.path.join(d, "ATTRIBUTION.txt"), ("\r\n".join(att) + "\r\n").encode("ascii"))
+    write_bytes(os.path.join(d, "hedgerow_map.txt"), (f"{SH_MARK} {VERSION} - do not edit\r\n").encode("ascii"))
+    sh_ini_place(xp)
+    tlog(f"hedgerow map: {total} features in {len(SH_TILES)} tiles ({took(t0)})")
+    say(f"  Hedgerow map: {total} Knicks, hedges and tree rows ({took(t0)})", C_GREEN)
+    return True
+
+
+def sh_ini_place(xp):
+    """Lists the hedgerow map above all simHeaven X-World packs: their forest exclusions would hide it otherwise."""
+    lines, nl = ini_read(xp)
+    if lines is None:
+        return False
+    mine = f"SCENERY_PACK Custom Scenery/{SH_DIR}/"
+    rest = [l for l in lines if not pack_line_is(l, SH_DIR)]
+    i = next((k for k, l in enumerate(rest) if re.search(r"(?i)^SCENERY_PACK(_DISABLED)?\s+Custom Scenery/simHeaven_X-World_", l)), None)
+    if i is None:
+        i = next((k for k, l in enumerate(rest) if pack_line_is(l, KNICK_DIR)), None)
+    if i is None:
+        i = next((k for k, l in enumerate(rest) if l.startswith("SCENERY_PACK")), len(rest))
+    new = rest[:i] + [mine] + rest[i:]
+    if new == lines:
+        return False
+    ini_write(xp, new, nl)
+    return True
+
+
+def sh_remove(xp):
+    d = sh_pack(xp)
+    if os.path.isdir(d):
+        for root, dirs, files in os.walk(d, topdown=False):
+            for n in files:
+                if n.endswith(".dsf") or n in ("ATTRIBUTION.txt", "hedgerow_map.txt") or n.endswith(".tmp") or n.endswith(".fdt_tmp"):
+                    os.remove(os.path.join(root, n))
+            if root != d:
+                try:
+                    os.rmdir(root)
+                except OSError:
+                    pass
+        try:
+            os.rmdir(d)
+        except OSError:
+            warn(f"  Folder Custom Scenery/{SH_DIR} has other files in it and was left in place.")
+    lines, nl = ini_read(xp)
+    if lines is not None and any(pack_line_is(l, SH_DIR) for l in lines):
+        ini_write(xp, [l for l in lines if not pack_line_is(l, SH_DIR)], nl)
+    tlog("hedgerow map: removed")
 
 
 def hedge_choice_state(xp, hstate):
@@ -1329,6 +2007,29 @@ def ask_spacing(current, tweaked):
         warn("  Please choose 1, 2, 3 or 4.")
 
 
+def ask_height(current):
+    say("  Step 2  Tree height")
+    say("          Lower value = smaller trees. 1.0 = original. Includes the 3D tree models.")
+    for i, (name, v, note) in enumerate(HEIGHT_PRESETS, 1):
+        say(f"          [{i}] {name:<16} {v:<4.1f}  {note}")
+    say(f"          [{len(HEIGHT_PRESETS) + 1}] Custom           your own value from {fmt(MIN_HEIGHT)} to 1.0")
+    n = len(HEIGHT_PRESETS) + 1
+    cur_choice = next((str(i) for i, p in enumerate(HEIGHT_PRESETS, 1) if p[1] == current), None)
+    hint = f"Enter = {cur_choice}" if cur_choice else f"Enter = keep {fmt(current)}"
+    while True:
+        a = input(f"  Choose 1-{n} ({hint}): ").strip()
+        if a == "":
+            return current
+        if a.isdigit() and 1 <= int(a) < n:
+            return HEIGHT_PRESETS[int(a) - 1][1]
+        if a == str(n):
+            return ask_value(MIN_HEIGHT, current, "tree height")
+        v = parse_value(a, MIN_HEIGHT)      # a value typed directly is fine too
+        if v is not None:
+            return v
+        warn(f"  Please choose a number from 1 to {n}.")
+
+
 def ask_profile(hf, current):
     def ex(w):
         return fmt(rnd(1.0 - (1.0 - hf) * w, 4))
@@ -1347,11 +2048,14 @@ def ask_profile(hf, current):
 def choose_settings(xp, targets):
     if blocked_by_xplane():
         return
+    ensure_tweak_active(xp, targets)
     st = forest_state(xp, targets)
     tweaked = st["n"] > 0
     cur_x, cur_h, cur_hp = st["x"], st["h"], st["hp"]
     hfiles, hstate, hlog = hedge_overview(xp)
     k_on, k_h, k_hp = knick_info(xp)
+    m_on = sh_info(xp) and knick_has_map(xp)
+    want_map = False
     hchoice = hedge_choice_state(xp, hstate)
     has_gf = any(rel(xp, t).startswith("Custom Scenery/") for t in targets)
     say()
@@ -1359,9 +2063,7 @@ def choose_settings(xp, targets):
     say()
     fac = ask_spacing(cur_x, tweaked)
     say()
-    say("  Step 2  Tree height")
-    say(f"          1.0 = original, 0.8 = trees 20 % smaller (lowest {fmt(MIN_HEIGHT)}). Includes the 3D tree models.")
-    hf = ask_value(MIN_HEIGHT, cur_h, "tree height")
+    hf = ask_height(cur_h)
     hp = "uniform"
     if hf < 1.0:
         say()
@@ -1378,6 +2080,13 @@ def choose_settings(xp, targets):
         while want_h is None:
             a = input(f"  Choose 1-3 (Enter = {cur}): ").strip() or cur
             want_h = {"1": "default", "2": "enhanced", "3": "Knicks"}.get(a)
+        if want_h == "Knicks":
+            say()
+            say("  Step 5  Hedgerow map Northern Germany/Denmark")
+            say("          Exact Knicks, field hedges, tree rows and avenues from the official map of")
+            say("          Schleswig-Holstein (LLUR SH, CC BY 4.0, included). Elsewhere in Northern Germany and")
+            say("          Denmark the simHeaven hedges stay. Built on this computer in about a minute.")
+            want_map = ask_yes(f"  Use the hedgerow map? [{'Y/n' if (m_on or not k_on) else 'y/N'}] ", m_on or not k_on)
     # summary
     same = (fac, hf, hp) == (cur_x, cur_h, cur_hp)
     rebuild = tweaked and (not same or st["n_old"] > 0)       # restore first, then apply the new values
@@ -1385,8 +2094,9 @@ def choose_settings(xp, targets):
     forest_change = rebuild or refresh or (not tweaked and (fac, hf) != (1.0, 1.0))
     hedge_change = bool(hfiles) and want_h != hchoice
     # Knick heights follow the tree height factor -> rewrite the library when it changes
-    knick_regen = bool(hfiles) and want_h == "Knicks" and k_on and (k_h, k_hp) != (hf, hp)
-    hedge_change = hedge_change or knick_regen
+    knick_regen = bool(hfiles) and want_h == "Knicks" and k_on and ((k_h, k_hp) != (hf, hp) or knick_lib_version(xp) != VERSION)
+    map_change = bool(hfiles) and want_h == "Knicks" and want_map != m_on
+    hedge_change = hedge_change or knick_regen or map_change
     say()
     say("  Summary")
     say("  -------")
@@ -1404,10 +2114,16 @@ def choose_settings(xp, targets):
         say(f"            Global Forests v2: cropland (field trees, hedgerows) extra x{CROP_FAC}, sparse forests")
         say(f"            extra x{SPARSE_FAC['25']} / x{SPARSE_FAC['50']} so they look less empty")
     if hfiles:
-        if knick_regen and want_h == hchoice:
-            say("  Hedges  : Knicks  ->  Knick heights follow the new tree height")
+        if want_h == hchoice and (knick_regen or map_change):
+            say("  Hedges  : Knicks" + (("  ->  Knick heights follow the new tree height" if (k_h, k_hp) != (hf, hp)
+                                       else "  ->  updated to this version (new Knick heights)") if knick_regen else ""))
         else:
             say(f"  Hedges  : {hchoice}" + (f"  ->  {want_h}" if hedge_change else "  (unchanged)"))
+        if want_h == "Knicks":
+            if map_change:
+                say(f"  Hedgerow map: {'on' if m_on else 'off'}  ->  {'on (about a minute)' if want_map else 'off'}")
+            elif want_map:
+                say("  Hedgerow map: on (unchanged)")
     if not forest_change and not hedge_change:
         say("  Nothing to change.")
         return
@@ -1446,11 +2162,18 @@ def choose_settings(xp, targets):
         elif hstate != "default":
             hedges_restore(xp, hfiles, hlog)
         if want_h == "Knicks":
-            knick_write(xp, hf, hp)
-            say(f"  Knicks (northern Germany/Denmark): library Custom Scenery/{KNICK_DIR}", C_GREEN)
+            have_map = m_on and not map_change
+            if want_map and not have_map:
+                have_map = sh_build(xp)
+            elif not want_map and sh_info(xp):
+                sh_remove(xp)
+                say("  Hedgerow map removed.", C_GREEN)
+            knick_write(xp, hf, hp, kmap=want_map and have_map)
+            say(f"  Knicks (Northern Germany/Denmark): library Custom Scenery/{KNICK_DIR}", C_GREEN)
             if not os.path.exists(scenery_ini(xp)):
                 warn("  scenery_packs.ini not found - start X-Plane once, then run Check & repair.")
-        elif k_on:
+        elif k_on or sh_info(xp):
+            sh_remove(xp)
             knick_remove(xp)
             say("  Knicks removed.", C_GREEN)
     if ok:
@@ -1462,6 +2185,7 @@ def choose_settings(xp, targets):
 def restore_all(xp, targets):
     if blocked_by_xplane():
         return
+    ensure_tweak_active(xp, targets)
     if not ask_yes("  Restore the original forests and hedges? [Y/n] "):
         say("  Cancelled - nothing was changed.")
         return
@@ -1469,7 +2193,8 @@ def restore_all(xp, targets):
     hfiles, hstate, hlog = hedge_overview(xp)
     if hfiles and hstate != "default":
         hedges_restore(xp, hfiles, hlog)
-    if knick_info(xp)[0]:
+    if knick_info(xp)[0] or sh_info(xp):
+        sh_remove(xp)
         knick_remove(xp)
         say("  Knicks removed.", C_GREEN)
     if ok:
@@ -1478,6 +2203,11 @@ def restore_all(xp, targets):
 
 
 def show_status(xp, targets):
+    if switched_off(xp):
+        say()
+        say("  Switched to ORIGINAL with [5]: forests, hedges and Knicks are original right now.", C_CYAN)
+        say("  Your tweak is kept next to the files - [5] switches back in a few seconds.")
+        return
     st = forest_state(xp, targets)
     hfiles, hstate, _ = hedge_overview(xp)
     say()
@@ -1489,7 +2219,9 @@ def show_status(xp, targets):
         warn(f"  From an older version: {st['n_old']} files -> run Choose settings once for the latest improvements")
     say(f"  simHeaven hedges     : {hedge_status_text(hfiles, hstate)}")
     if knick_info(xp)[0]:
-        say("  Knicks               : on (northern Germany/Denmark: hedges and tree rows as Knicks)")
+        say("  Knicks               : on (Northern Germany/Denmark: hedges and tree rows as Knicks)")
+        if sh_info(xp) and knick_has_map(xp):
+            say(f"  Hedgerow map         : on (Custom Scenery/{SH_DIR}, data: {SH_ATTRIB})")
     other = other_forest_addons(xp)
     if other:
         say()
@@ -1505,11 +2237,13 @@ def show_status(xp, targets):
 def check_repair(xp, targets):
     if blocked_by_xplane():
         return
+    ensure_tweak_active(xp, targets)
     say("  Checking backups and log ...")
     t0 = time.time()
     lp = log_path(xp)
     log = read_log(lp)
     tmp = cleanup_temp(xp, targets)
+    sides = repair_sides(xp, targets)
     roots = [rel(xp, t).lower() + "/" for t in targets]
     gone = reset = bad = ok_gz = 0
     bad_files = []
@@ -1573,11 +2307,20 @@ def check_repair(xp, targets):
     say(f"  Log lines of missing files     : {gone + len(hgone)} removed")
     say(f"  Unused backups / temp files    : {orphans} / {tmp} removed")
     say(f"  Empty backup folders           : {empty} removed")
+    if sides:
+        say(f"  Quick switch copies            : {sides} fixed or removed")
     k_on, k_h, k_hp = knick_info(xp)
     if k_on:
         # rewrite the Knick library (missing textures etc.) and fix its place in scenery_packs.ini
-        knick_write(xp, k_h, k_hp)
+        kmap = sh_info(xp) and all(os.path.isfile(os.path.join(sh_pack(xp), "Earth nav data", "%+03d%+04d" % (a // 10 * 10, b // 10 * 10),
+                                                                "%+03d%+04d.dsf" % (a, b))) for a, b in SH_TILES)
+        knick_write(xp, k_h, k_hp, kmap=kmap)
         say("  Knicks library                 : checked, listed above simHeaven in scenery_packs.ini")
+        if kmap:
+            sh_ini_place(xp)
+            say("  Hedgerow map                   : checked, listed above simHeaven X-World")
+        elif sh_info(xp):
+            warn("  Hedgerow map                   : incomplete - run Choose settings to build it again")
     tlog(f"check: ok {ok_gz}, reset {reset}, gone {gone}, orphans {orphans}, tmp {tmp}, empty dirs {empty}, bad {bad} ({took(t0)})")
     if bad:
         say()
@@ -1588,6 +2331,218 @@ def check_repair(xp, targets):
             tlog(f"check: damaged backup {r}")
     else:
         say("  Everything is fine.", C_GREEN)
+
+
+# ---------------------------------------------------------------- [5] quick switch tweak <-> original
+# Both versions of every tweaked file are kept side by side, so switching is only renaming:
+#   tweak active   : file.for = tweak,     file.for.fdt_orig  = original (made at the first switch)
+#   original active: file.for = original,  file.for.fdt_tweak = tweak
+# The simHeaven hedges are set back / enhanced again (4 small files), the Knick library and the hedgerow
+# map are switched off / on in scenery_packs.ini. X-Plane ignores the extra files.
+SIDE_ORIG, SIDE_TWEAK = ".fdt_orig", ".fdt_tweak"
+SWITCH_FILE = "switched_off.json"
+
+
+def switch_path(xp):
+    return os.path.join(tweak_dir(xp), SWITCH_FILE)
+
+
+def switched_off(xp):
+    return os.path.isfile(switch_path(xp))
+
+
+def drop_sides(f):
+    for ext in (SIDE_ORIG, SIDE_TWEAK):
+        if os.path.exists(f + ext):
+            os.remove(f + ext)
+
+
+def is_logged_original(fo, e):
+    return fo.lines == as_list(e.get("o")) and ("ot" not in e or fo.tlines == as_list(e["ot"]))
+
+
+def original_bytes(xp, f, r, e):
+    """The original file: from the 3D model backup (checked) or by putting the logged lines back."""
+    if e.get("mb"):
+        bp = backup_path(xp, r)
+        try:
+            with gzip.open(bp, "rb") as g:
+                data = g.read()
+        except (OSError, EOFError):
+            return None
+        if "ms" in e and hashlib.sha256(data).hexdigest() != e["ms"]:
+            return None
+        return data
+    fo = ForFile(f)
+    new_head = set_seq(fo.head, LINE_RX, e.get("o"))
+    new_tail = set_seq(fo.tail, TREE_RX, e["ot"]) if "ot" in e else fo.tail
+    return new_head.encode("latin-1") + fo.data[fo.head_len:fo.tail_start] + new_tail.encode("latin-1")
+
+
+def ini_set_enabled(xp, folder, on):
+    """Switches one pack line on/off in scenery_packs.ini. True if it was changed."""
+    lines, nl = ini_read(xp)
+    if lines is None:
+        return False
+    new = []
+    for l in lines:
+        if pack_line_is(l, folder):
+            l = ("SCENERY_PACK" if on else "SCENERY_PACK_DISABLED") + f" Custom Scenery/{folder}/"
+        new.append(l)
+    if new == lines:
+        return False
+    ini_write(xp, new, nl)
+    return True
+
+
+def switch_off(xp, targets):
+    """Tweak -> original. Returns True if done."""
+    lp = log_path(xp)
+    log = read_log(lp)
+    files = [f for f in get_files(targets) if rel(xp, f) in log]
+    todo = []
+    for f in files:
+        e = log[rel(xp, f)]
+        if state(ForFile(f, quick=True), e) == "tweaked":
+            todo.append(f)
+        else:
+            drop_sides(f)                  # reset by an update: the kept copies are outdated
+    need = sum(os.path.getsize(f) for f in todo if not os.path.exists(f + SIDE_ORIG))
+    if need and free_space(xp) < need + DISK_MARGIN:
+        say(f"  Not enough free disk space to keep both versions (needs about {need / 2**30:.1f} GB).", C_RED)
+        return False
+    if need:
+        say(f"  First switch: keeping a copy of the original files ({need / 2**30:.1f} GB, only this time) ...")
+    t0 = time.time()
+    pr = Progress("Switching to original", len(todo))
+    done, damaged = 0, []
+    for i, f in enumerate(todo, 1):
+        pr.update(i, i, len(todo))
+        r = rel(xp, f)
+        if not os.path.exists(f + SIDE_ORIG):
+            data = original_bytes(xp, f, r, log[r])
+            if data is None:
+                damaged.append(r)          # stays tweaked; Check & repair tells more
+                continue
+            write_bytes(f + SIDE_ORIG, data)
+        os.replace(f, f + SIDE_TWEAK)
+        os.replace(f + SIDE_ORIG, f)
+        done += 1
+    pr.end()
+    _hf, hstate, hlog = hedge_overview(xp)
+    hedges = hstate
+    if _hf and hstate == "enhanced":
+        hedges_restore(xp, _hf, hlog)
+    packs = [d for d in (SH_DIR, KNICK_DIR) if ini_set_enabled(xp, d, False)]
+    with open(switch_path(xp), "w", encoding="utf-8") as fh:
+        json.dump({"version": VERSION, "hedges": hedges, "packs": packs, "files": done}, fh)
+    tlog(f"switch: original ({done} files, {len(damaged)} damaged backups, hedges {hedges}, packs off {packs}, {took(t0)})")
+    say(f"  Switched to ORIGINAL: {done} forest files" + (", simHeaven hedges default" if hedges == "enhanced" else "")
+        + (", Knicks off" if packs else "") + f"   ({took(t0)})", C_GREEN)
+    if damaged:
+        warn(f"  {len(damaged)} files stay tweaked (their 3D model backup is missing or damaged) - see Check & repair.")
+    return True
+
+
+def switch_on(xp, targets, quiet=False):
+    """Original -> tweak. Returns True if done."""
+    try:
+        with open(switch_path(xp), encoding="utf-8") as fh:
+            info = json.load(fh)
+    except (OSError, ValueError):
+        info = {}
+    log = read_log(log_path(xp))
+    t0 = time.time()
+    done = stale = 0
+    files = [f for f in get_files(targets) if rel(xp, f) in log]
+    pr = Progress("Switching to tweak", len(files))
+    for i, f in enumerate(files, 1):
+        pr.update(i, i, len(files))
+        if not os.path.exists(f + SIDE_TWEAK):
+            continue
+        e = log[rel(xp, f)]
+        if is_logged_original(ForFile(f, quick=True), e):
+            os.replace(f, f + SIDE_ORIG)
+            os.replace(f + SIDE_TWEAK, f)
+            done += 1
+        else:
+            os.remove(f + SIDE_TWEAK)      # changed by an X-Plane/GFv2 update meanwhile -> tweak it again
+            stale += 1
+    pr.end()
+    if info.get("hedges") == "enhanced":
+        _hf, hstate, hlog = hedge_overview(xp)
+        if _hf and hstate != "enhanced":
+            hedges_apply(xp, _hf, hlog)
+    for d in info.get("packs", []):
+        ini_set_enabled(xp, d, True)
+    os.remove(switch_path(xp))
+    tlog(f"switch: tweak ({done} files, {stale} updated meanwhile, {took(t0)})")
+    if not quiet or stale:
+        say(f"  Switched to TWEAK: {done} forest files   ({took(t0)})", C_GREEN)
+    if stale:
+        warn(f"  {stale} files were updated by X-Plane or Global Forests meanwhile - run Choose settings to tweak them again.")
+    return True
+
+
+def repair_sides(xp, targets):
+    """After an interrupted switch: puts every file back into the tweak state, drops outdated copies."""
+    log = read_log(log_path(xp))
+    fixed = 0
+    for t in targets:
+        for root, _d, names in os.walk(t):
+            for name in names:
+                if not (name.endswith(SIDE_ORIG) or name.endswith(SIDE_TWEAK)):
+                    continue
+                full = os.path.join(root, name)
+                base = full[:-len(SIDE_ORIG)] if name.endswith(SIDE_ORIG) else full[:-len(SIDE_TWEAK)]
+                if not os.path.exists(full):
+                    continue                       # handled together with its partner
+                e = log.get(rel(xp, base))
+                if not os.path.exists(base):
+                    os.replace(base + SIDE_TWEAK if os.path.exists(base + SIDE_TWEAK) else full, base)
+                    fixed += 1
+                    continue
+                if e is None:
+                    drop_sides(base)
+                    fixed += 1
+                    continue
+                if os.path.exists(base + SIDE_TWEAK) and is_logged_original(ForFile(base, quick=True), e):
+                    os.replace(base, base + SIDE_ORIG)
+                    os.replace(base + SIDE_TWEAK, base)
+                    fixed += 1
+                elif state(ForFile(base, quick=True), e) != "tweaked":
+                    drop_sides(base)                 # reset by an update: the copies are outdated
+                    fixed += 1
+                elif os.path.exists(base + SIDE_TWEAK):
+                    os.remove(base + SIDE_TWEAK)
+                    fixed += 1
+    return fixed
+
+
+def switch_menu(xp, targets):
+    if blocked_by_xplane():
+        return
+    if switched_off(xp):
+        if ask_yes("  Switch back to your tweak? [Y/n] "):
+            switch_on(xp, targets)
+            say("  Done! You can start X-Plane now.", C_GREEN)
+        return
+    st = forest_state(xp, targets)
+    if not st["n"] and not knick_info(xp)[0]:
+        say("  Nothing is tweaked - nothing to switch.")
+        return
+    say("  Switches to the original forests (and hedges/Knicks) without losing your tweak.")
+    say("  [5] again switches back in a few seconds. The first time a copy of the originals is kept.")
+    if ask_yes("  Switch to original now? [Y/n] "):
+        if switch_off(xp, targets):
+            say("  Done! You can start X-Plane now.", C_GREEN)
+
+
+def ensure_tweak_active(xp, targets):
+    """Choose settings, Restore and Check & repair work on the tweak: switch back first if needed."""
+    if switched_off(xp):
+        say("  The tweak is switched off - switching back first ...")
+        switch_on(xp, targets, quiet=True)
 
 
 # ---------------------------------------------------------------- main
@@ -1612,7 +2567,10 @@ def main():
         warn("  X-Plane is running - please quit it before changing anything.")
     st = forest_state(xp, targets)
     _hf, hstate, _hl = hedge_overview(xp)
-    say(f"  Status  : {status_line(st, hedge_choice_state(xp, hstate) if hstate else hstate)}")
+    if switched_off(xp):
+        say("  Status  : switched to ORIGINAL - your tweak is kept, [5] switches back", C_CYAN)
+    else:
+        say(f"  Status  : {status_line(st, hedge_choice_state(xp, hstate) if hstate else hstate)}")
     environment_hints(xp, targets, gf)
     upd_thread.join(timeout=3)
     tag = upd.get("tag", "")
@@ -1620,7 +2578,8 @@ def main():
         say(f"  Update  : version {tag.lstrip('vV')} is available - github.com/{REPO}/releases", C_CYAN)
     while True:
         say()
-        say("  [1] Choose settings   [2] Restore original   [3] Status   [4] Check & repair   [Q] Quit")
+        sw = "[5] Switch back to tweak" if switched_off(xp) else "[5] Switch to original"
+        say(f"  [1] Choose settings   [2] Restore original   [3] Status   [4] Check & repair   {sw}   [Q] Quit")
         a = input("  Choice: ").strip()
         if a == "1":
             choose_settings(xp, targets)
@@ -1630,6 +2589,8 @@ def main():
             show_status(xp, targets)
         elif a == "4":
             check_repair(xp, targets)
+        elif a == "5":
+            switch_menu(xp, targets)
         elif a.lower() == "q":
             return
 
