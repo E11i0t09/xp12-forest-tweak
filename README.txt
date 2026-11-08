@@ -1,7 +1,8 @@
-XP12 Forest Tweak  v1.5.0
+XP12 Forest Tweak  v1.5.1
 =========================
 
-Denser forests and optionally smaller trees (3D trees included) for X-Plane 12.
+Denser forests, optionally smaller trees (3D trees included) and real-looking
+hedges for X-Plane 12, also with simHeaven X-World and X-WORLD Pro.
 The vegetation slider can never exceed the tree density defined in the forest
 files (.for) - this tool changes those files directly. Tree spacing 0.7 =
 roughly twice as many trees per area. Windows, macOS and Linux.
@@ -15,14 +16,13 @@ Do not copy it into Resources/plugins. No renaming needed.
 DOWNLOADS / FOLDERS
 -------------------
 Download the ZIP for your system - each one contains everything you need:
-  XP12_ForestTweak_v1.5.0_Windows.zip  (folder Windows/ in the repository)
+  XP12_ForestTweak_v1.5.1_Windows.zip  (folder Windows/ in the repository)
       Start_ForestTweak.bat            (double-click), no admin rights needed
-  XP12_ForestTweak_v1.5.0_macOS.zip    (folder macOS/)
+  XP12_ForestTweak_v1.5.1_macOS.zip    (folder macOS/)
       Start_ForestTweak_macOS.command  (double-click), needs Python 3.8+
-  XP12_ForestTweak_v1.5.0_Linux.zip    (folder Linux/)
+  XP12_ForestTweak_v1.5.1_Linux.zip    (folder Linux/)
       start_forest_tweak_linux.sh      (sh start_forest_tweak_linux.sh), Python 3.8+
   FlyWithLua/ForestDensityToggle.lua (optional in-sim window, in every ZIP)
-  XP12_ForestTweak_v1.5.0_All.zip      Windows, macOS and Linux in one ZIP
 
 One tool per system for all setups: if Global Forests v2 is installed, it
 asks whether to include it. All versions share one backup log, nothing is
@@ -51,19 +51,14 @@ HOW TO USE
           Sparse Global Forests v2 areas get extra trees, dense areas stay.
   Step 2  Tree height: Original 1.0, Slightly smaller 0.8, Smaller 0.7,
           Much smaller 0.6 or your own value from 0.5 to 1.0.
+          Realistic profile: conifers shrink less (0.8 -> 0.88), palms 0.84,
+          shrubs/orchards 0.9, broadleaf 0.8.
           The 3D tree models are scaled too. This rewrites the files
           and keeps a compressed backup of the originals (with checksum) in
           ForestDensityTweak/mesh_backup (about 1.5 GB with GFv2).
-  Step 3  Height profile (only below 1.0):
-            uniform    every tree gets the same factor
-            realistic  conifers shrink less (0.8 -> 0.88), palms 0.84,
-                       shrubs/orchards 0.9, broadleaf 0.8
-  Step 4  simHeaven hedges (only with simHeaven X-World): default, enhanced, or
-          Knicks - in the Knick areas (SH, HH, NW Lower Saxony, W Mecklenburg,
-          Denmark) hedges become Knicks (bushes and single trees), tree rows
-          mixed trees and scrub denser bushes; elsewhere
-          enhanced. The tool creates Custom Scenery/XP12_ForestTweak_Knicks and
-          lists it above simHeaven in scenery_packs.ini; Restore removes both.
+  Step 3  Hedges (only with simHeaven X-World or X-WORLD Pro, see below):
+            [1] Original  [2] Enhanced  [3] Hedgebanks (Knicks)
+          With X-WORLD Pro and [2] or [3]: choose the countries.
   To change values later, just run Choose settings again.
   The summary shows an estimated time. With tree height and Global Forests
   v2 it can take 10 minutes or more.
@@ -89,22 +84,34 @@ still limited by
 - an X-Plane or GFv2 update: run Choose settings again.
 
 
-SIMHEAVEN HEDGES / KNICKS (OPTIONAL)
-------------------------------------
-Step 4 of Choose settings switches the hedges of simHeaven X-World (e.g. the
-Knicks in northern Germany) between
-  default   2.2 - 2.8 m high, visible up to 4 km
-  enhanced  about 4 - 5 m high, visible up to 8 km
-  Knicks    Knick areas in Germany and Denmark: Knicks with bushes and
-            single trees, mixed tree rows, denser scrub
-Step 5 (with Knicks): hedgerow map Northern Germany/Denmark. The official map of
-all Knicks, field hedges, tree rows and avenues of Schleswig-Holstein (LLUR SH,
-CC BY 4.0) comes with the tool (hedgerow_map_sh.dat). The tool builds exact
-Knicks from it on your computer (about a minute) in
-Custom Scenery/XP12_ForestTweak_HedgerowMap. Elsewhere the simHeaven hedges stay.
-Of simHeaven itself only the hedge files of its Vegetation Library are changed.
-Originals are logged in ForestDensityTweak/hedges.log and restored exactly.
-After a simHeaven update, run Choose settings again and confirm.
+HEDGES AND HEDGEBANKS (OPTIONAL, WITH SIMHEAVEN)
+------------------------------------------------
+The tool finds out which simHeaven add-ons are installed (free X-World,
+X-WORLD Pro). Step 3 of Choose settings gives the same look with both:
+  [1] Original    as simHeaven made them
+  [2] Enhanced    green hedges about 4 - 5 m, visible up to 8 km.
+                  Free X-World: worldwide. X-WORLD Pro (grey walls): rebuilt
+                  as green hedges in the countries you choose (Germany,
+                  Denmark, Benelux, Austria, Switzerland or all Pro tiles).
+  [3] Hedgebanks  (Knicks) in the Knick areas (Schleswig-Holstein, Hamburg,
+                  NW Lower Saxony, W Mecklenburg, Denmark): bushes on earth
+                  banks with single hedgerow trees (Ueberhaelter), mixed tree
+                  rows, denser scrub. Elsewhere as [2].
+All new hedges change with the four seasons.
+Official hedge maps (folder data/, see data/DATA_LICENSES.txt) add the hedges
+that OpenStreetMap does not have: Schleswig-Holstein, Lower Saxony/Bremen/
+Hamburg, North Rhine-Westphalia, Bavaria, Brandenburg, Denmark (earth banks,
+diger). Where a map has a hedge it replaces the simHeaven one, the others are
+taken over.
+The tool builds the hedges on your computer into
+Custom Scenery/XP12_ForestTweak_HedgerowMap (up to about 250 MB) and the hedge
+types into Custom Scenery/XP12_ForestTweak_Knicks, both listed above
+simHeaven in scenery_packs.ini (backup kept). Free X-World: Enhanced also
+changes the hedge files of its Vegetation Library (originals logged in
+ForestDensityTweak/hedges.log). Nothing of simHeaven is shipped.
+Free X-World and X-WORLD Pro both on for one region: the tool offers to turn
+the free packs off. After a simHeaven update run Check & repair.
+Restore original removes everything again.
 
 
 BACKUP / UNDO / CHECK & REPAIR
@@ -161,9 +168,17 @@ Not allowed: selling or renting it, bundling it with paid products or
 services, charging for downloads, or distributing modified versions
 commercially. Changed versions may be shared non-commercially under the
 same license, with credit to the author.
-hedgerow_map_sh.dat: based on data of LLUR SH, Biotopkartierung SH4 (Alleen,
-Knicks, Feldhecken, Baumreihen, 2023), CC BY 4.0
-(https://creativecommons.org/licenses/by/4.0/). Changed: lines and type only,
-compact format. This file is licensed under CC BY 4.0, not under the tool license.
+Hedge maps (data/hedgerow_map_*.dat) are NOT under the tool license: each
+keeps the license of its source (CC BY 4.0, dl-de/by-2-0 or CC0 1.0).
+Sources, links and changes: data/DATA_LICENSES.txt.
+  SH:  LLUR SH, Biotopkartierung SH4 (2023), CC BY 4.0
+  NI:  (c) ML/SLA Niedersachsen/CC BY 4.0 - Landschaftselemente NI/HB/HH
+  NRW: Land NRW - Landschaftselemente in NRW (2026-11-07), dl-de/by-2-0
+  BY:  Bayerisches Staatsministerium fuer Ernaehrung, Landwirtschaft, Forsten
+       und Tourismus - InVeKoS Landschaftselemente, CC BY 4.0
+  BB:  (c) Ministerium fuer Land- und Ernaehrungswirtschaft, Umwelt und
+       Verbraucherschutz - InVeKoS Landschaftselemente BB (2026-11-07),
+       dl-de/by-2-0
+  DK:  Slots- og Kulturstyrelsen - Beskyttede sten- og jorddiger, CC0 1.0
 License: (c) E11i0t09 - CC BY-NC-SA 4.0 + additional permission,
 see LICENSE. https://creativecommons.org/licenses/by-nc-sa/4.0/

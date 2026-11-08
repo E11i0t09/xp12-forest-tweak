@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.1
+- **simHeaven X-WORLD Pro:** the tool now finds which simHeaven add-ons are installed (free X-World, X-WORLD Pro, or none) and gives the same look for forests, hedges and bushes with both. X-WORLD Pro draws hedges as grey walls; with *Enhanced* or *Hedgebanks* they become green hedges with all four seasons in the countries you choose (Germany, Denmark, Benelux, Austria, Switzerland, or all Pro tiles). Built on your computer, nothing of simHeaven is shipped.
+- **Official hedge maps for more regions:** besides Schleswig-Holstein now also Niedersachsen/Bremen/Hamburg, Nordrhein-Westfalen, Bayern, Brandenburg and the Danish earth banks (diger). Hedges that OpenStreetMap does not have are added. In the Knick areas they become hedgebanks, elsewhere green hedges. All map files come with the tool, each under its own open license (see `data/DATA_LICENSES.txt`).
+- **Shorter menu, three steps:** tree spacing, tree height, hedges. The height profile is always *realistic* now (an existing *uniform* tweak changes at the next *Choose settings*, shown in the summary). New defaults when nothing is tweaked yet: spacing 0.7, height 0.7. The summary lists what will be changed.
+- **Hedges:** *[1] Original*, *[2] Enhanced* (green hedges 4–5 m), *[3] Hedgebanks (Knicks)*. With free X-World, *Enhanced* works worldwide at once; the hedge maps are added in their regions.
+- Free X-World and X-WORLD Pro both active for the same region: the tool offers to turn off the free packs (backup of `scenery_packs.ini` kept).
+- After a simHeaven update, *Check & repair* rebuilds only the hedge tiles whose simHeaven source changed.
+- *Choose settings* no longer reads all forest files a second time right after the start.
+- In-sim window: shows the hedge setting (*enhanced* or *hedgebanks*) and whether hedge maps are used.
+
 ## 1.5.0
 - **Hedgerow map Northern Germany/Denmark (optional):** with Knicks on, the tool can use the official map of all Knicks, field hedges, tree rows and avenues of Schleswig-Holstein (LLUR SH, CC BY 4.0, included in the ZIP) and builds exact Knicks on your computer in about a minute. Where the map has nothing (Denmark, Lower Saxony, Mecklenburg, gardens), the simHeaven hedges stay. *Restore original* removes everything.
 - **More natural Knicks:** bushes in three sizes (1.5–8 m) and Ueberhaelter in three ages (6–14 m), all scaled by your tree height. Heights change in sections of about 100 m, and there are sections with and without Ueberhaelter.

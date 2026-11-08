@@ -14,12 +14,25 @@ Modified versions may be shared non-commercially under the same license, with cr
 
 Copies of v1.0.0 to v1.2.1 obtained before 21 October 2026 were licensed under the MIT License.
 
-EXCEPTION - MAP DATA: the file data/hedgerow_map_sh.dat (hedgerow_map_sh.dat in the ZIPs) is not covered
-by the license above. It is based on data of LLUR SH, Biotopkartierung SH4 - Alleen, Knicks, Feldhecken und
-Baumreihen (2023), and is licensed under the Creative Commons Attribution 4.0 International License
-(CC BY 4.0, https://creativecommons.org/licenses/by/4.0/). Changes: only the lines and their type are kept,
-coordinates rounded to 0.1 m, stored in a compact format. Source:
-https://opendata.schleswig-holstein.de/dataset/sh4-biotopkartierung-der-alleen-knicks-feldhecken-und-baumreihen
+EXCEPTION - MAP DATA: the hedge map files data/hedgerow_map_*.dat and data/DATA_LICENSES.txt are not
+covered by the license above. Each map file keeps the license of its source (full details, dataset links and
+changes in data/DATA_LICENSES.txt):
+  hedgerow_map_sh.dat   LLUR SH, Biotopkartierung SH4 - Alleen, Knicks, Feldhecken und Baumreihen (2023)
+                        CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+  hedgerow_map_ni.dat   (c) ML/SLA Niedersachsen/CC BY 4.0 - Landschaftselemente in Niedersachsen, Bremen
+                        und Hamburg. CC BY 4.0
+  hedgerow_map_by.dat   Bayerisches Staatsministerium fuer Ernaehrung, Landwirtschaft, Forsten und Tourismus -
+                        InVeKoS Landschaftselemente. CC BY 4.0
+  hedgerow_map_bb.dat   (c) Ministerium fuer Land- und Ernaehrungswirtschaft, Umwelt und Verbraucherschutz
+                        (Brandenburg) - InVeKoS Landschaftselemente BB. Datenlizenz Deutschland - Namensnennung -
+                        Version 2.0 (dl-de/by-2-0, https://www.govdata.de/dl-de/by-2-0)
+  hedgerow_map_nrw.dat  Land NRW - Landschaftselemente in NRW (retrieved 2026-11-07). dl-de/by-2-0
+                        (https://www.govdata.de/dl-de/by-2-0)
+  hedgerow_map_dk.dat   Slots- og Kulturstyrelsen - Beskyttede sten- og jorddiger. CC0 1.0
+                        (https://creativecommons.org/publicdomain/zero/1.0/)
+Changes for all map files: only the outlines and the type (hedge / hedgebank, tree row, copse) are kept,
+coordinates converted to ETRS89 / UTM 32N (EPSG:4647), rounded to 0.1 m and stored in a compact format.
+The data providers do not endorse this project.
 
 ----------------------------------------------------------------------
 

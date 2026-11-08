@@ -1,6 +1,6 @@
 <#
   XP12 Forest Tweak  -  Windows
-  Version 1.5.0 (2026-11-05)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.5.1 (2026-11-08)   https://github.com/E11i0t09/xp12-forest-tweak
 
   Denser forests and optionally smaller trees for X-Plane 12 - for vanilla X-Plane,
   simHeaven X-World and Global Forests v2 (one tool for all; if Global Forests v2 is
@@ -27,12 +27,18 @@
   - Every original line is logged in <X-Plane>\ForestDensityTweak\backup.log
     (shared with the macOS/Linux version and all earlier versions), so "Restore original"
     puts back the exact original values and nothing is ever scaled twice.
-  - Optional: simHeaven hedges "default" or "enhanced" (hedges such as the Knicks in
-    northern Germany about 4-5 m high and visible up to 8 km). Originals are logged in
-    ForestDensityTweak\hedges.log. Or "Knicks": in northern Germany and Denmark the hedges
-    become Knicks (bushes plus single trees) and the tree rows mixed tree rows. For this the
-    tool creates a small library in Custom Scenery\XP12_ForestTweak_Knicks (textures copied
-    from the X-Plane default forests) and lists it above simHeaven in scenery_packs.ini.
+  - Optional, with simHeaven X-World (free) or X-WORLD Pro: hedges "original", "enhanced"
+    (green hedges about 4-5 m high, all four seasons) or "hedgebanks (Knicks)" (in northern
+    Germany and Denmark bushes on earth banks with single hedgerow trees, elsewhere enhanced).
+    Free X-World: the hedge files of its Vegetation Library are changed (originals logged in
+    ForestDensityTweak\hedges.log). X-WORLD Pro draws hedges as walls, which can not be changed
+    through a library, so the tool rebuilds them as hedges in the countries you choose.
+    Official hedge maps (Schleswig-Holstein, Niedersachsen/Bremen/Hamburg, Nordrhein-Westfalen,
+    Bayern, Brandenburg, Denmark; see DATA_LICENSES.txt) add the hedges that OpenStreetMap does
+    not have. Both are built on this computer into Custom Scenery\XP12_ForestTweak_HedgerowMap.
+    The tool library Custom Scenery\XP12_ForestTweak_Knicks (textures copied from the X-Plane
+    default forests) defines the hedge types. Both folders are listed in scenery_packs.ini
+    (backup kept). simHeaven files are only read; nothing of simHeaven is shipped.
   - Actions are written to ForestDensityTweak\tool.log (helpful for bug reports).
 
   After an X-Plane or Global Forests update the updated files are original again.
@@ -44,12 +50,13 @@
 #>
 
 $ErrorActionPreference = 'Stop'
-$Version    = '1.5.0'
+$Version    = '1.5.1'
 $TestedXP   = '12.4'          # X-Plane version the tool was tested with
 $Repo       = 'E11i0t09/xp12-forest-tweak'
 $Threshold  = 3.1             # files with a smaller tree spacing are grass/shrubs/hedges -> kept
 $Presets    = @(@('Natural', 0.8, 'noticeably denser'), @('Dense', 0.7, 'about 2x trees, recommended'), @('Very dense', 0.6, 'about 2.8x trees, needs a strong GPU'))
 $DefaultFac = 0.7             # preset [2]
+$DefaultHeight = 0.7          # height preset [3]
 $MinFac     = 0.4
 $MinHeight  = 0.5             # lowest allowed height factor
 $HeightPresets = @(@('Original', 1.0, 'trees as in X-Plane'), @('Slightly smaller', 0.8, '20 % smaller'), @('Smaller', 0.7, '30 % smaller'), @('Much smaller', 0.6, '40 % smaller'))
@@ -155,21 +162,22 @@ public static class FdtMesh14 {
 "@
 }
 
-# Hedgerow map: reads hedgerow_map_sh.dat (shipped with the tool), converts it into X-Plane DSF tiles and
-# takes over the simHeaven hedges/tree rows the map does not have (same steps as the macOS/Linux version).
-if (-not ('FdtKnickMap' -as [type])) {
+# Hedge overlay: reads the official hedge maps (hedgerow_map_*.dat, shipped with the tool) and the simHeaven
+# hedges/tree rows of this computer and turns them into X-Plane DSF tiles (same steps as the macOS/Linux version).
+if (-not ('FdtHedgeMap' -as [type])) {
     try { Add-Type -AssemblyName System.IO.Compression -ErrorAction SilentlyContinue } catch { }
     # Windows PowerShell 5.1 needs the ZIP assembly listed; PowerShell 7 references it by default
     $kmArgs = @{}
     if ($PSVersionTable.PSEdition -eq 'Desktop') { $kmArgs.ReferencedAssemblies = @('System.IO.Compression') }
 Add-Type @kmArgs -TypeDefinition @"
 using System; using System.IO; using System.IO.Compression; using System.Collections.Generic; using System.Text; using System.Security.Cryptography;
-// Hedgerow map (Schleswig-Holstein) -> X-Plane DSF tiles. Same algorithm as the macOS/Linux version (step by step).
-public static class FdtKnickMap {
+// Hedge overlay: official hedge maps + simHeaven hedges/tree rows -> X-Plane DSF tiles.
+// Same algorithm as the macOS/Linux version (step by step, same results byte for byte).
+public static class FdtHedgeMap {
     public const double GrsA = 6378137.0, GrsF = 1 / 298.257222101, K0 = 0.9996;
     public static readonly double Deg = 180.0 / Math.PI;
     static double UA; static double[] Beta, Delta;
-    static FdtKnickMap() {
+    static FdtHedgeMap() {
         double n = GrsF / (2 - GrsF), n2 = n * n, n3 = n2 * n;
         UA = GrsA / (1 + n) * (1 + n2 / 4 + n2 * n2 / 64);
         Beta = new double[] { n / 2 - 2 * n2 / 3 + 37 * n3 / 96, n2 / 48 + n3 / 15, 17 * n3 / 480 };
@@ -185,41 +193,50 @@ public static class FdtKnickMap {
     }
     public class Lcg { uint s; public Lcg(long seed) { s = (uint)(seed & 0xFFFFFFFF); }
         public double Next() { unchecked { s = s * 1664525u + 1013904223u; } return s / 4294967296.0; } }
-    // tiles: south/west pairs; codes HW HF HR HA
-    public static readonly string[] Codes = { "HW", "HF", "HR", "HA" };
-    public static int[][] Tiles = { new[] { 53, 9 }, new[] { 53, 10 }, new[] { 54, 8 }, new[] { 54, 9 }, new[] { 54, 10 }, new[] { 54, 11 } };
-    // result[tile][code] = list of polylines (lon, lat pairs)
-    public static List<List<double[]>>[][] Lines;
 
-
+    // codes: lines 0 HW (Knick/hedge), 1 HF (field hedge), 2 HR (tree row), 3 HA (avenue); areas 4 AH (hedge), 5 AR (tree row), 6 AC (copse)
+    public class Rec { public int Code; public int[] Ints; public Rec(int c, int[] i) { Code = c; Ints = i; } }
+    public static Dictionary<long, List<Rec>> Data = new Dictionary<long, List<Rec>>();
+    public static long TileKey(int s, int w) { return ((long)(s + 1000) << 16) + (long)(w + 1000); }
     static int Varint(byte[] b, ref int o) { int v = 0, sh = 0; while (true) { int c = b[o++]; v |= (c & 0x7F) << sh; if ((c & 0x80) == 0) return v; sh += 7; } }
 
-    // hedgerow map shipped with the tool: gzip, "XFTHMAP1", line count, point count, then per line:
-    // code (0 HW, 1 HF, 2 HR, 3 HA), point count, zigzag varint deltas of easting/northing in 0.1 m (EPSG 4647)
+    // hedge map shipped with the tool: gzip, "XFTHMAP1", line count, point count, then per line:
+    // code, point count, zigzag varint deltas of easting/northing in 0.1 m (EPSG 4647)
     public static void ReadMap(string path) {
-        Lines = new List<List<double[]>>[Tiles.Length][];
-        for (int t = 0; t < Tiles.Length; t++) { Lines[t] = new List<List<double[]>>[4]; for (int c = 0; c < 4; c++) Lines[t][c] = new List<List<double[]>>(); }
         byte[] b;
         using (FileStream fs = File.OpenRead(path)) using (GZipStream gz = new GZipStream(fs, CompressionMode.Decompress)) using (MemoryStream ms = new MemoryStream()) { gz.CopyTo(ms); b = ms.ToArray(); }
-        if (Encoding.ASCII.GetString(b, 0, 8) != "XFTHMAP1") throw new Exception("hedgerow map: unknown file format");
+        if (Encoding.ASCII.GetString(b, 0, 8) != "XFTHMAP1") throw new Exception("hedge map: unknown file format: " + Path.GetFileName(path));
         int nl = BitConverter.ToInt32(b, 8), o = 16;
         for (int li = 0; li < nl; li++) {
             int ci = b[o++]; int n = Varint(b, ref o); long e = 0, nn = 0;
-            List<double[]> pts = new List<double[]>(n);
-            double mnx = double.MaxValue, mxx = double.MinValue, mny = double.MaxValue, mxy = double.MinValue;
+            int[] ints = new int[2 * n]; long mnx = long.MaxValue, mxx = long.MinValue, mny = long.MaxValue, mxy = long.MinValue;
             for (int k = 0; k < n; k++) {
                 int de = Varint(b, ref o), dn = Varint(b, ref o);
                 e += (de >> 1) ^ -(de & 1); nn += (dn >> 1) ^ -(dn & 1);
-                double[] ll = Utm(e / 10.0, nn / 10.0); pts.Add(ll);
-                if (ll[0] < mnx) mnx = ll[0]; if (ll[0] > mxx) mxx = ll[0]; if (ll[1] < mny) mny = ll[1]; if (ll[1] > mxy) mxy = ll[1];
+                ints[2 * k] = (int)e; ints[2 * k + 1] = (int)nn;
+                if (e < mnx) mnx = e; if (e > mxx) mxx = e; if (nn < mny) mny = nn; if (nn > mxy) mxy = nn;
             }
-            for (int t = 0; t < Tiles.Length; t++) {
-                int s = Tiles[t][0], w = Tiles[t][1];
-                if (mxx < w || mnx > w + 1 || mxy < s || mny > s + 1) continue;
-                foreach (List<double[]> piece in Clip(pts, w, s)) Lines[t][ci].Add(piece);
+            double lo0 = double.MaxValue, lo1 = double.MinValue, la0 = double.MaxValue, la1 = double.MinValue;
+            foreach (long ce in new long[] { mnx, mxx }) foreach (long cn in new long[] { mny, mxy }) {
+                double[] ll = Utm(ce / 10.0, cn / 10.0);
+                if (ll[0] < lo0) lo0 = ll[0]; if (ll[0] > lo1) lo1 = ll[0]; if (ll[1] < la0) la0 = ll[1]; if (ll[1] > la1) la1 = ll[1];
             }
+            Rec r = new Rec(ci, ints);
+            for (int s = (int)Math.Floor(la0); s <= (int)Math.Floor(la1); s++)
+                for (int w = (int)Math.Floor(lo0); w <= (int)Math.Floor(lo1); w++) {
+                    long key = TileKey(s, w); List<Rec> l;
+                    if (!Data.TryGetValue(key, out l)) { l = new List<Rec>(); Data[key] = l; }
+                    l.Add(r);
+                }
         }
     }
+    public static void Clear() { Data = new Dictionary<long, List<Rec>>(); }
+    public static int[] DataTiles() {
+        List<int> r = new List<int>();
+        foreach (long k in Data.Keys) { r.Add((int)(k >> 16) - 1000); r.Add((int)(k & 0xFFFF) - 1000); }
+        return r.ToArray();
+    }
+    static List<double[]> ToLL(int[] ints) { List<double[]> r = new List<double[]>(ints.Length / 2); for (int i = 0; i < ints.Length; i += 2) r.Add(Utm(ints[i] / 10.0, ints[i + 1] / 10.0)); return r; }
 
     static List<List<double[]>> Clip(List<double[]> pts, int w, int s) {
         List<List<double[]>> outp = new List<List<double[]>>(); List<double[]> cur = new List<double[]>();
@@ -238,6 +255,43 @@ public static class FdtKnickMap {
         if (cur.Count > 1) outp.Add(cur);
         return outp;
     }
+    // polygon clipped to the tile (Sutherland-Hodgman), edges in the order west, east, south, north
+    static List<double[]> ClipPoly(List<double[]> pts, int w, int s) {
+        List<double[]> p = new List<double[]>(pts);
+        for (int edge = 0; edge < 4 && p.Count > 0; edge++) {
+            List<double[]> outp = new List<double[]>();
+            for (int i = 0; i < p.Count; i++) {
+                double[] a = p[i == 0 ? p.Count - 1 : i - 1], b = p[i];
+                bool ia = Inside(a, edge, w, s), ib = Inside(b, edge, w, s);
+                if (ib) { if (!ia) outp.Add(Inter(a, b, edge, w, s)); outp.Add(b); }
+                else if (ia) outp.Add(Inter(a, b, edge, w, s));
+            }
+            p = outp;
+        }
+        return p;
+    }
+    static bool Inside(double[] q, int edge, int w, int s) {
+        switch (edge) { case 0: return q[0] >= w; case 1: return q[0] <= w + 1; case 2: return q[1] >= s; default: return q[1] <= s + 1; }
+    }
+    static double[] Inter(double[] a, double[] b, int edge, int w, int s) {
+        if (edge < 2) { double x = edge == 0 ? w : w + 1; double t = (x - a[0]) / (b[0] - a[0]); return new double[] { x, a[1] + t * (b[1] - a[1]) }; }
+        double y = edge == 2 ? s : s + 1; double u = (y - a[1]) / (b[1] - a[1]); return new double[] { a[0] + u * (b[0] - a[0]), y };
+    }
+    static List<double[]> AreaRing(List<double[]> pts, int w, int s) {
+        if (pts.Count > 1 && pts[0][0] == pts[pts.Count - 1][0] && pts[0][1] == pts[pts.Count - 1][1]) pts = pts.GetRange(0, pts.Count - 1);
+        if (pts.Count < 3) return null;
+        double mnx = double.MaxValue, mxx = double.MinValue, mny = double.MaxValue, mxy = double.MinValue;
+        foreach (double[] p in pts) { if (p[0] < mnx) mnx = p[0]; if (p[0] > mxx) mxx = p[0]; if (p[1] < mny) mny = p[1]; if (p[1] > mxy) mxy = p[1]; }
+        if (mnx < w || mxx > w + 1 || mny < s || mxy > s + 1) { pts = ClipPoly(pts, w, s); if (pts.Count < 3) return null; }
+        double area = 0.0;
+        for (int i = 0; i < pts.Count; i++) { double[] p0 = pts[i == 0 ? pts.Count - 1 : i - 1], p1 = pts[i]; area += p0[0] * p1[1] - p1[0] * p0[1]; }
+        if (area < 0) { pts = new List<double[]>(pts); pts.Reverse(); }
+        while (pts.Count > 255) pts = Half(pts);
+        List<double[]> r = new List<double[]>(pts.Count);
+        foreach (double[] p in pts) r.Add(new double[] { Math.Min(Math.Max(p[0], w), w + 1), Math.Min(Math.Max(p[1], s), s + 1) });
+        return r;
+    }
+    static List<double[]> Half(List<double[]> pts) { List<double[]> h = new List<double[]>(); for (int i = 0; i < pts.Count; i += 2) h.Add(pts[i]); return h; }
 
     // --- tile geometry
     class Geo { public int S, W; public double Kx, Ky = 110574.0;
@@ -245,8 +299,15 @@ public static class FdtKnickMap {
         public double[] ToM(double[] p, double[] o) { return new double[] { (p[0] - o[0]) * Kx, (p[1] - o[1]) * Ky }; }
         public double[] ToLL(double mx, double my, double[] o) { return new double[] { o[0] + mx / Kx, o[1] + my / Ky }; }
         public double[] Clamp(double[] p) { return new double[] { Math.Min(Math.Max(p[0], W), W + 1), Math.Min(Math.Max(p[1], S), S + 1) }; }
+        public long Cell(double[] p) { return Key((long)Math.Floor((p[0] - W) * Kx / 20.0), (long)Math.Floor((p[1] - S) * Ky / 20.0)); }
+        public bool Near(HashSet<long> set, double[] p) {
+            long cx = (long)Math.Floor((p[0] - W) * Kx / 20.0), cy = (long)Math.Floor((p[1] - S) * Ky / 20.0);
+            for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) if (set.Contains(Key(cx + i, cy + j))) return true;
+            return false;
+        }
+        public bool HalfNear(HashSet<long> set, List<double[]> pts) { int hit = 0; foreach (double[] p in pts) if (Near(set, p)) hit++; return hit * 2 >= pts.Count; }
     }
-    // resample: returns points (mx, my, ux, uy) in metres from o = line[0]
+    static long Key(long x, long y) { return (x << 32) ^ (y & 0xFFFFFFFFL); }
     static List<double[]> Resample(Geo g, List<double[]> line, double step, Lcg rng) {
         double[] o = line[0]; List<double[]> outp = new List<double[]>(); double acc = 0.0, nxt = step * rng.Next();
         for (int i = 0; i + 1 < line.Count; i++) {
@@ -280,7 +341,7 @@ public static class FdtKnickMap {
         left.Reverse(); right.AddRange(left); return right;
     }
 
-    // --- DSF reading (forest polygons of the simHeaven tile)
+    // --- DSF reading (forest and facade polygons of a simHeaven tile)
     class Feat { public int D; public int P; public List<double[]> Pts; public Feat(int d, int p, List<double[]> pts) { D = d; P = p; Pts = pts; } }
     static string Id(byte[] b, int o) { return new string(new char[] { (char)b[o + 3], (char)b[o + 2], (char)b[o + 1], (char)b[o] }); }
     static List<int[]> Atoms(byte[] b, int o, int end) { List<int[]> r = new List<int[]>(); while (o < end) { int ln = BitConverter.ToInt32(b, o + 4); r.Add(new int[] { o, ln }); o += ln; } return r; }
@@ -297,15 +358,16 @@ public static class FdtKnickMap {
         if (enc == 1 || enc == 3) { int acc = 0; for (int i = 0; i < n; i++) { acc = (acc + vals[i]) & 0xFFFF; vals[i] = (ushort)acc; } }
         return o;
     }
-    static List<object[]> ReadDsf(string path) {
+    static List<object[]> ReadDsf(string path, string[] wanted) {
+        HashSet<string> want = new HashSet<string>(wanted);
         byte[] b = File.ReadAllBytes(path);
         if (Encoding.ASCII.GetString(b, 0, 8) != "XPLNEDSF") throw new Exception("not a DSF file (compressed?): " + path);
-        byte[] defn = null, geod = null, cmds = null; int dO = 0, dL = 0, gO = 0, gL = 0, cO = 0, cL = 0;
+        int dO = -1, dL = 0, gO = 0, gL = 0, cO = 0, cL = 0;
         foreach (int[] a in Atoms(b, 12, b.Length - 16)) {
             string id = Id(b, a[0]);
-            if (id == "DEFN" && defn == null) { defn = b; dO = a[0] + 8; dL = a[1] - 8; }
-            else if (id == "GEOD" && geod == null) { geod = b; gO = a[0] + 8; gL = a[1] - 8; }
-            else if (id == "CMDS" && cmds == null) { cmds = b; cO = a[0] + 8; cL = a[1] - 8; }
+            if (id == "DEFN" && dO < 0) { dO = a[0] + 8; dL = a[1] - 8; }
+            else if (id == "GEOD" && gL == 0) { gO = a[0] + 8; gL = a[1] - 8; }
+            else if (id == "CMDS" && cL == 0) { cO = a[0] + 8; cL = a[1] - 8; }
         }
         List<string> polyd = new List<string>();
         foreach (int[] a in Atoms(b, dO, dO + dL)) {
@@ -329,7 +391,7 @@ public static class FdtKnickMap {
         Action<int, int[]> add = delegate (int prm, int[] idx) {
             if (def >= polyd.Count) return;
             string nm = polyd[def];
-            if (nm != "simheaven/forests/hedge.for" && nm != "simheaven/forests/random_tree.for") return;
+            if (!want.Contains(nm)) return;
             ushort[][] pl = planes[pool]; float[] sc = scal[pool]; List<double[]> pts = new List<double[]>(idx.Length);
             foreach (int i in idx) pts.Add(new double[] { pl[0][i] / 65535.0 * sc[0] + sc[1], pl[1][i] / 65535.0 * sc[2] + sc[3] });
             outp.Add(new object[] { nm, prm, pts });
@@ -368,59 +430,85 @@ public static class FdtKnickMap {
         return outp;
     }
 
-    // --- one tile: returns DSF bytes; counts in nSh / kept
-    public static int LastSh, LastKept;
-    public static byte[] BuildTile(int t, string shvPath, string agent, string vKnick, string vRow) {
-        int s = Tiles[t][0], w = Tiles[t][1]; Geo g = new Geo(s, w); Lcg rng = new Lcg(s * 1000 + w);
-        List<Feat> feats = new List<Feat>(); int nSh = 0;
+    static List<double[]> ClampAll(Geo g, List<double[]> r) { List<double[]> c = new List<double[]>(r.Count); foreach (double[] p in r) c.Add(g.Clamp(p)); return c; }
+    static void Ribbons(Geo g, List<double[]> line, List<Feat> feats, ref int n) {
+        for (int i = 0; i < line.Count - 1; i += 99) {
+            List<double[]> r = Ribbon(g, line.GetRange(i, Math.Min(100, line.Count - i)), 0.8);
+            if (r != null) { feats.Add(new Feat(0, 255, ClampAll(g, r))); n++; }
+        }
+    }
+
+    // --- one tile: returns DSF bytes; counts in LastMap / LastKept
+    public static int LastMap, LastKept;
+    static readonly string[] ProHedges = { "simheaven/ground/hedge_low.fac", "simheaven/ground/hedge_high.fac", "simheaven/ground/hedge_low.for", "simheaven/ground/hedge_high.for" };
+    static readonly string[] FreeHedges = { "simheaven/forests/hedge.for" };
+    static readonly string[] Rows = { "simheaven/forests/random_tree.for" };
+    public static byte[] BuildTile(int s, int w, string kind, string p1, string p2, bool knick, string agent, string vHedge, string vRow) {
+        Geo g = new Geo(s, w); Lcg rng = new Lcg(s * 1000 + w);
+        List<Feat> feats = new List<Feat>(); int nMap = 0;
+        List<Rec> recs; if (!Data.TryGetValue(TileKey(s, w), out recs)) recs = new List<Rec>();
+        List<int[]>[] lines = new List<int[]>[7]; for (int c = 0; c < 7; c++) lines[c] = new List<int[]>();
+        foreach (Rec r in recs) lines[r.Code].Add(r.Ints);
+        List<object[]> srcRows = new List<object[]>();
+        if (kind != null && (p2 != null || kind == "free")) srcRows = ReadDsf(kind == "pro" ? p2 : p1, Rows);
+        HashSet<long> rowCells = new HashSet<long>();
+        if (!knick) foreach (object[] f in srcRows) foreach (double[] p in (List<double[]>)f[2]) rowCells.Add(g.Cell(p));
+        Func<List<double[]>, bool> nearRows = delegate (List<double[]> pts) { return rowCells.Count > 0 && g.HalfNear(rowCells, pts); };
+        // official maps
         for (int ci = 0; ci < 2; ci++)
-            foreach (List<double[]> line in Lines[t][ci])
-                for (int i = 0; i < line.Count - 1; i += 99) {
-                    List<double[]> r = Ribbon(g, line.GetRange(i, Math.Min(100, line.Count - i)), 0.8);
-                    if (r != null) { List<double[]> c = new List<double[]>(r.Count); foreach (double[] p in r) c.Add(g.Clamp(p)); feats.Add(new Feat(0, 255, c)); nSh++; }
-                }
+            foreach (int[] ints in lines[ci])
+                foreach (List<double[]> piece in Clip(ToLL(ints), w, s)) Ribbons(g, piece, feats, ref nMap);
         for (int ci = 2; ci < 4; ci++) {
             double[] offs = ci == 2 ? new double[] { 0.0 } : new double[] { -5.0, 5.0 }; double step = ci == 2 ? 7.0 : 8.0;
-            foreach (List<double[]> line in Lines[t][ci])
-                foreach (double off in offs) {
-                    double[] o = line[0]; List<double[]> pts = Resample(g, line, step, rng); List<double[]> ll = new List<double[]>(pts.Count);
-                    foreach (double[] p in pts) { double jx = rng.Next() - 0.5; double jy = rng.Next() - 0.5; ll.Add(g.Clamp(g.ToLL(p[0] + p[3] * off + jx, p[1] - p[2] * off + jy, o))); }
-                    for (int i = 0; i < ll.Count; i += 250) { feats.Add(new Feat(1, 767, ll.GetRange(i, Math.Min(250, ll.Count - i)))); nSh++; }
+            foreach (int[] ints in lines[ci])
+                foreach (List<double[]> piece in Clip(ToLL(ints), w, s)) {
+                    if (nearRows(piece)) continue;
+                    foreach (double off in offs) {
+                        double[] o = piece[0]; List<double[]> pts = Resample(g, piece, step, rng); List<double[]> ll = new List<double[]>(pts.Count);
+                        foreach (double[] p in pts) { double jx = rng.Next() - 0.5; double jy = rng.Next() - 0.5; ll.Add(g.Clamp(g.ToLL(p[0] + p[3] * off + jx, p[1] - p[2] * off + jy, o))); }
+                        for (int i = 0; i < ll.Count; i += 250) { feats.Add(new Feat(1, 767, ll.GetRange(i, Math.Min(250, ll.Count - i)))); nMap++; }
+                    }
                 }
         }
+        for (int ci = 4; ci < 7; ci++) {
+            int d = ci == 4 ? 0 : 1;
+            foreach (int[] ints in lines[ci]) {
+                List<double[]> ll = ToLL(ints);
+                if (d == 1 && nearRows(ll)) continue;
+                List<double[]> r = AreaRing(ll, w, s);
+                if (r != null) { feats.Add(new Feat(d, 255, r)); nMap++; }
+            }
+        }
+        // where the official maps have something: 20 m cells along every line and outline
         HashSet<long> cov = new HashSet<long>();
-        for (int ci = 0; ci < 4; ci++)
-            foreach (List<double[]> line in Lines[t][ci]) {
-                double[] o = line[0];
-                foreach (double[] p in Resample(g, line, 10.0, new Lcg(0))) {
-                    double[] ll = g.ToLL(p[0], p[1], o);
-                    cov.Add(Key((long)Math.Floor((ll[0] - w) * g.Kx / 20.0), (long)Math.Floor((ll[1] - s) * g.Ky / 20.0)));
-                }
+        for (int ci = 0; ci < 7; ci++)
+            foreach (int[] ints in lines[ci]) {
+                List<double[]> ll = ToLL(ints);
+                if (ci >= 4) ll.Add(ll[0]);
+                double[] o = ll[0];
+                foreach (double[] p in Resample(g, ll, 10.0, new Lcg(0))) cov.Add(g.Cell(g.ToLL(p[0], p[1], o)));
             }
         int kept = 0;
-        if (shvPath != null) {
-            foreach (object[] f in ReadDsf(shvPath)) {
+        if (kind != null) {
+            foreach (object[] f in ReadDsf(p1, kind == "pro" ? ProHedges : FreeHedges)) {
                 string nm = (string)f[0]; int prm = (int)f[1]; List<double[]> pts = (List<double[]>)f[2];
-                if (pts.Count == 0) continue;
-                int cv = 0;
-                foreach (double[] p in pts) {
-                    long cx = (long)Math.Floor((p[0] - w) * g.Kx / 20.0), cy = (long)Math.Floor((p[1] - s) * g.Ky / 20.0); bool hit = false;
-                    for (int i = -1; i <= 1 && !hit; i++) for (int j = -1; j <= 1 && !hit; j++) if (cov.Contains(Key(cx + i, cy + j))) hit = true;
-                    if (hit) cv++;
-                }
-                if (cv * 2 >= pts.Count) continue;
-                int d = nm.EndsWith("hedge.for") ? 0 : 1;
-                if (pts.Count > 255) {
-                    if (prm >= 512) { for (int i = 0; i < pts.Count; i += 250) feats.Add(new Feat(1, prm, pts.GetRange(i, Math.Min(250, pts.Count - i)))); kept++; continue; }
-                    while (pts.Count > 255) { List<double[]> h = new List<double[]>(); for (int i = 0; i < pts.Count; i += 2) h.Add(pts[i]); pts = h; }
-                }
-                feats.Add(new Feat(d, prm, pts)); kept++;
+                if (pts.Count == 0 || g.HalfNear(cov, pts)) continue;
+                if (nm.EndsWith(".fac")) { int dummy = 0; Ribbons(g, pts, feats, ref dummy); }
+                else { while (pts.Count > 255) pts = Half(pts); feats.Add(new Feat(0, prm < 512 ? prm : 255, pts)); }
+                kept++;
             }
+            if (knick)
+                foreach (object[] f in srcRows) {
+                    int prm = (int)f[1]; List<double[]> pts = (List<double[]>)f[2];
+                    if (pts.Count == 0 || g.HalfNear(cov, pts)) continue;
+                    if (prm >= 512) { for (int i = 0; i < pts.Count; i += 250) feats.Add(new Feat(1, prm, pts.GetRange(i, Math.Min(250, pts.Count - i)))); }
+                    else { while (pts.Count > 255) pts = Half(pts); feats.Add(new Feat(1, prm, pts)); }
+                    kept++;
+                }
         }
-        LastSh = nSh; LastKept = kept;
-        return WriteDsf(s, w, new string[] { vKnick, vRow }, feats, agent);
+        LastMap = nMap; LastKept = kept;
+        return WriteDsf(s, w, new string[] { vHedge, vRow }, feats, agent);
     }
-    static long Key(long x, long y) { return (x << 32) ^ (y & 0xFFFFFFFFL); }
 
     static void Atom(MemoryStream m, string id, byte[] payload) {
         m.WriteByte((byte)id[3]); m.WriteByte((byte)id[2]); m.WriteByte((byte)id[1]); m.WriteByte((byte)id[0]);
@@ -466,14 +554,14 @@ public static class FdtKnickMap {
                            "sim/west", w.ToString(), "sim/east", (w + 1).ToString(), "sim/north", (s + 1).ToString(), "sim/south", s.ToString() };
         byte[] head = Wrap("HEAD", Wrap("PROP", Stab(props)));
         byte[] defn = Wrap("DEFN", Cat(Wrap("TERT", new byte[0]), Wrap("OBJT", new byte[0]), Wrap("POLY", Stab(defs)), Wrap("NETW", new byte[0]), Wrap("DEMN", new byte[0])));
-        MemoryStream g = new MemoryStream();
+        MemoryStream gm = new MemoryStream();
         foreach (ushort[][] q in pq) {
             MemoryStream p = new MemoryStream(); p.Write(BitConverter.GetBytes(q[0].Length), 0, 4); p.WriteByte(2);
             for (int k = 0; k < 2; k++) { p.WriteByte(0); foreach (ushort v in q[k]) p.Write(BitConverter.GetBytes(v), 0, 2); }
-            Atom(g, "POOL", p.ToArray());
+            Atom(gm, "POOL", p.ToArray());
         }
-        foreach (float[] sc in ps) { MemoryStream p = new MemoryStream(); foreach (float v in sc) p.Write(BitConverter.GetBytes(v), 0, 4); Atom(g, "SCAL", p.ToArray()); }
-        byte[] body = Cat(Encoding.ASCII.GetBytes("XPLNEDSF"), BitConverter.GetBytes(1), head, defn, Wrap("GEOD", g.ToArray()), Wrap("CMDS", cmd.ToArray()));
+        foreach (float[] sc in ps) { MemoryStream p = new MemoryStream(); foreach (float v in sc) p.Write(BitConverter.GetBytes(v), 0, 4); Atom(gm, "SCAL", p.ToArray()); }
+        byte[] body = Cat(Encoding.ASCII.GetBytes("XPLNEDSF"), BitConverter.GetBytes(1), head, defn, Wrap("GEOD", gm.ToArray()), Wrap("CMDS", cmd.ToArray()));
         byte[] md5; using (MD5 h = MD5.Create()) md5 = h.ComputeHash(body);
         return Cat(body, md5);
     }
@@ -938,7 +1026,7 @@ function Get-StatusLine($st, $hstate) {
         elseif ($st.NOrig) { $s += " - $($st.NOrig) files not tweaked" }
         elseif ($st.NOld) { $s += ' - run Choose settings once to apply the latest improvements' }
     }
-    if ($hstate) { $s += " | hedges $hstate" }
+    if ($hstate) { $s += " | hedges " + $(if ($ChoiceNames.ContainsKey($hstate)) { $ChoiceNames[$hstate] } else { $hstate }) }
     return $s
 }
 
@@ -1259,26 +1347,257 @@ $KnickRow = @(@(880,3584,170,252,85,8,12,20,'t','oak1_07'), @(1050,3584,104,252,
 $KnickScrub = @(@(224,2848,118,124,59,25,2.5,5,'b','decid_03'), @(1900,2848,128,124,64,24,2,4.5,'b','sorbus_07'),
                 @(1792,2848,108,124,54,24,2,4,'b','lilac_06'), @(332,2080,110,124,55,24,3,6,'b','locust_01'),
                 @(294,3584,118,252,59,2,6,10,'s','birch_07'), @(1296,2976,110,252,55,1,6,10,'s','aspen_05'))
+# hedge outside the Knick areas (simHeaven hedges, X-WORLD Pro hedge walls, official hedge maps): dense bushes
+$KnickPlain = @(@(224,2848,118,124,59,20,3,5,'b','decid_03'), @(1900,2848,128,124,64,20,3,5,'b','sorbus_07'),
+                @(1792,2848,108,124,54,20,2.5,4.5,'b','lilac_06'), @(332,2080,110,124,55,15,4,5.5,'b','locust_01'),
+                @(224,2848,118,124,59,15,2,3,'b','decid_03'), @(1792,2848,108,124,54,10,2,3,'b','lilac_06'))
 $KnickKinds = @(@('knick', 'Knick: bushes in three sizes plus Ueberhaelter in sections', '0.8', '0.8', '8000', $KnickHedge, 'simheaven/forests/hedge.for'),
                 @('treerow', 'Knick tree row: mixed broadleaf trees plus bushes in between', '2.5', '1.2', '10000', $KnickRow, 'simheaven/forests/random_tree.for'),
                 @('scrub', 'Knick scrub: dense bushes 2-6 m with a few small trees', '3', '1.5', '8000', $KnickScrub, 'simheaven/forests/shrubs.for'),
-                @('knickmap', 'Knick of the hedgerow map: bushes in three sizes plus Ueberhaelter (1.6 m strips)', '1.0', '0.8', '8000', $KnickHedge, $null))
-# Knick areas outside the tiles of the hedgerow map (there the map replaces the simHeaven hedges)
-$KnickRectsNoMap = @('7 52 9 52', '7 53 8 53', '11 53 11 53', '12 54 12 54', '8 55 12 55', '14 55 14 55', '8 56 11 57')
+                @('knickmap', 'Knick of the hedgerow map: bushes in three sizes plus Ueberhaelter (1.6 m strips)', '1.0', '0.8', '8000', $KnickHedge, $null),
+                @('hedge', 'Hedge: dense bushes 2-5.5 m (hedges outside the Knick areas)', '1.0', '0.8', '8000', $KnickPlain, $null))
 
-# ---------------------------------------------------------------- hedgerow map (optional, with Knicks)
-# With Knicks on, the tool can use the official map of all Knicks (hedgerows), field hedges, tree rows and
-# avenues of Schleswig-Holstein (Biotopkartierung SH4, LLUR SH, CC BY 4.0). It comes with the tool as
-# hedgerow_map_sh.dat (lines only, converted from the original shapefile) and is turned into X-Plane
-# scenery tiles on this computer. Where the map has nothing (Denmark, Lower Saxony, Mecklenburg, gardens),
-# the simHeaven hedges and tree rows of this computer are taken over (they are not shipped).
+# ---------------------------------------------------------------- hedge overlay
+# The tool turns hedges and tree rows into X-Plane forests in its own scenery pack ($ShDir), built on this
+# computer. Sources, in this order:
+#   1. official hedge maps that come with the tool (hedgerow_map_*.dat, see DATA_LICENSES.txt)
+#   2. the simHeaven hedges and tree rows of this computer (free X-World or X-WORLD Pro), only where the
+#      official maps have nothing nearby. They are hidden in the built tiles by the tool's library.
+# simHeaven X-WORLD Pro draws hedges as walls (facades), which can not become forests through a library, so
+# with Pro the hedges of the chosen countries are rebuilt here. Nothing of simHeaven is shipped.
 $ShUrl    = 'https://opendata.schleswig-holstein.de/dataset/sh4-biotopkartierung-der-alleen-knicks-feldhecken-und-baumreihen'
-$ShFile   = 'hedgerow_map_sh.dat'
 $ShDir    = 'XP12_ForestTweak_HedgerowMap'
-$ShRects  = @('9 53 10 53', '8 54 11 54')
-$ShAttrib = 'LLUR SH, Biotopkartierung SH4 (Alleen, Knicks, Feldhecken, Baumreihen, 2023), CC BY 4.0'
 $ShVKnick = 'xp12_foresttweak/knick_map.for'
 $ShVRow   = 'xp12_foresttweak/treerow_map.for'
+$HmVHedge = 'xp12_foresttweak/hedge_map.for'
+$HmFiles = @(
+    @('sh', 'hedgerow_map_sh.dat', 'Schleswig-Holstein', 'LLUR SH, Biotopkartierung SH4 (Alleen, Knicks, Feldhecken, Baumreihen, 2023), CC BY 4.0', $ShUrl),
+    @('ni', 'hedgerow_map_ni.dat', 'Niedersachsen, Bremen, Hamburg', '(c) ML/SLA Niedersachsen/CC BY 4.0 - Landschaftselemente in Niedersachsen, Bremen und Hamburg',
+      'https://inspire-geoportal.ec.europa.eu/srv/api/records/c0f447eb-151b-42a7-bdd0-e99b1062f67c'),
+    @('nrw', 'hedgerow_map_nrw.dat', 'Nordrhein-Westfalen', 'Land NRW - Landschaftselemente in NRW (2026-11-07), dl-de/by-2-0 (www.govdata.de/dl-de/by-2-0)',
+      'https://ckan.open.nrw.de/dataset/landschaftselemente-in-nrw-geo-nrw'),
+    @('by', 'hedgerow_map_by.dat', 'Bayern', 'Bayerisches Staatsministerium fuer Ernaehrung, Landwirtschaft, Forsten und Tourismus - InVeKoS Landschaftselemente, CC BY 4.0',
+      'https://gdk.gdi-de.org/geonetwork/srv/api/records/2bf51905-de03-4a56-93c4-1bea034b3a4d'),
+    @('bb', 'hedgerow_map_bb.dat', 'Brandenburg', '(c) Ministerium fuer Land- und Ernaehrungswirtschaft, Umwelt und Verbraucherschutz - InVeKoS Landschaftselemente BB (2026-11-07), dl-de/by-2-0 (www.govdata.de/dl-de/by-2-0)',
+      'https://gdk.gdi-de.org/geonetwork/srv/api/records/72ed0323-7f32-400f-8bc1-7f0bb6cb83ba'),
+    @('dk', 'hedgerow_map_dk.dat', 'Denmark', 'Slots- og Kulturstyrelsen - Beskyttede sten- og jorddiger, CC0 1.0',
+      'https://arealdata.miljoeportal.dk/datasets/urn:dmp:ds:beskyttede-sten-og-jorddiger'))
+$ProHedgeFac = @('simheaven/ground/hedge_low.fac', 'simheaven/ground/hedge_high.fac')
+$ProHedgeFor = @('simheaven/ground/hedge_low.for', 'simheaven/ground/hedge_high.for')
+$RowVPath    = 'simheaven/forests/random_tree.for'
+$BlankFac    = "A`r`n800`r`nFACADE`r`n"
+# Countries for X-WORLD Pro (not named $Countries: PowerShell names ignore case and the parameter $countries would hide it): whole 1x1 degree tiles south -> (west from, west to); border tiles belong to both
+$CountryTable = @(@('de', 'Germany', @{ 47 = @(7, 13); 48 = @(7, 13); 49 = @(6, 13); 50 = @(5, 14); 51 = @(5, 14); 52 = @(6, 14); 53 = @(6, 14); 54 = @(8, 14); 55 = @(8, 8) }),
+               @('dk', 'Denmark', @{ 54 = @(8, 12); 55 = @(8, 15); 56 = @(8, 12); 57 = @(8, 11) }),
+               @('bnl', 'Benelux', @{ 49 = @(5, 6); 50 = @(2, 6); 51 = @(2, 6); 52 = @(3, 7); 53 = @(4, 7) }),
+               @('at', 'Austria', @{ 46 = @(9, 16); 47 = @(9, 17); 48 = @(12, 17) }),
+               @('ch', 'Switzerland', @{ 45 = @(8, 9); 46 = @(5, 10); 47 = @(5, 10) }))
+$ChoiceNames = @{ 'default' = 'original'; 'enhanced' = 'enhanced'; 'Knicks' = 'hedgebanks (Knicks)' }
+
+function TK([int]$s, [int]$w) { "$s,$w" }
+function Get-RectsTiles($rects) {
+    $out = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($r in $rects) { $v = @($r.Split(' ') | ForEach-Object { [int]$_ }); for ($s = $v[1]; $s -le $v[3]; $s++) { for ($w = $v[0]; $w -le $v[2]; $w++) { [void]$out.Add((TK $s $w)) } } }
+    return ,$out
+}
+$KnickTiles = Get-RectsTiles $KnickRects
+function Split-TK([string]$k) { $p = $k.Split(','); @([int]$p[0], [int]$p[1]) }
+function Sort-Tiles($tiles) { @($tiles | Sort-Object @{ Expression = { (Split-TK $_)[0] } }, @{ Expression = { (Split-TK $_)[1] } }) }
+function Get-TilesRects($tiles) {
+    # tiles -> REGION_RECT lines "west south east north", one run per row of tiles
+    $out = @()
+    $rows = @{}
+    foreach ($t in $tiles) { $sw = Split-TK $t; if (-not $rows.ContainsKey($sw[0])) { $rows[$sw[0]] = @() }; $rows[$sw[0]] += $sw[1] }
+    foreach ($s in @($rows.Keys | Sort-Object)) {
+        $ws = @($rows[$s] | Sort-Object)
+        $a = $ws[0]; $b = $ws[0]
+        for ($i = 1; $i -le $ws.Count; $i++) {
+            if ($i -lt $ws.Count -and $ws[$i] -eq $b + 1) { $b = $ws[$i]; continue }
+            $out += "$a $s $b $s"
+            if ($i -lt $ws.Count) { $a = $ws[$i]; $b = $ws[$i] }
+        }
+    }
+    return $out
+}
+function Get-TileRelDir([int]$s, [int]$w) { (Get-ShTileRel $s $w) }
+
+function Get-HmFile([string]$name) {
+    $up = Split-Path -Parent $PSScriptRoot
+    foreach ($d in @($PSScriptRoot, $up, (Join-Path $up 'data'), (Join-Path $PSScriptRoot 'data'))) { $p = Join-Path $d $name; if (Test-Path -LiteralPath $p) { return $p } }
+    return $null
+}
+$script:HmLoaded = $false; $script:HmFound = @()
+function Read-HmData {
+    if ($script:HmLoaded) { return }
+    [FdtHedgeMap]::Clear()
+    $script:HmFound = @()
+    foreach ($f in $HmFiles) { $p = Get-HmFile $f[1]; if ($p) { [FdtHedgeMap]::ReadMap($p); $script:HmFound += $f[0] } }
+    $script:HmLoaded = $true
+}
+function Get-HmDataTiles {
+    Read-HmData
+    $a = [FdtHedgeMap]::DataTiles(); $out = New-Object 'System.Collections.Generic.HashSet[string]'
+    for ($i = 0; $i -lt $a.Length; $i += 2) { [void]$out.Add((TK $a[$i] $a[$i + 1])) }
+    return ,$out
+}
+
+# ---- simHeaven on this computer
+function Get-HmSources($xp) {
+    # enabled simHeaven packs with hedges, in scenery_packs.ini order
+    $ini = Read-Ini $xp
+    $out = @()
+    if (-not $ini) { return ,$out }
+    foreach ($l in $ini.Lines) {
+        if ($l -match '(?i)^SCENERY_PACK\s+Custom Scenery/(simHeaven_X-WORLD-Pro_(.+?)-06-extras1)/?\s*$') {
+            $n = $Matches[1]; $r = $Matches[2]
+            $out += [pscustomobject]@{ Kind = 'pro'; D = (Join-Path $xp "Custom Scenery/$n"); D2 = (Join-Path $xp ("Custom Scenery/" + $n.Substring(0, $n.Length - 10) + '07-extras2')); Region = $r }
+        } elseif ($l -match '(?i)^SCENERY_PACK\s+Custom Scenery/(simHeaven_X-World_(.+?)-4-extras)/?\s*$') {
+            $n = $Matches[1]; $r = $Matches[2]
+            $out += [pscustomobject]@{ Kind = 'free'; D = (Join-Path $xp "Custom Scenery/$n"); D2 = (Join-Path $xp "Custom Scenery/$n"); Region = $r }
+        }
+    }
+    return ,$out
+}
+function Get-HmDetect($xp) {
+    $src = Get-HmSources $xp
+    $pro = @($src | Where-Object { $_.Kind -eq 'pro' } | ForEach-Object { $_.Region } | Sort-Object -Unique)
+    $free = @($src | Where-Object { $_.Kind -eq 'free' } | ForEach-Object { $_.Region } | Sort-Object -Unique)
+    $both = @($pro | Where-Object { $p = $_; @($free | Where-Object { $_.ToLower() -eq $p.ToLower() }).Count })
+    [pscustomobject]@{ Pro = $pro; Free = $free; Both = $both }
+}
+function Get-HmProTiles($xp) {
+    $out = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($src in (Get-HmSources $xp)) {
+        if ($src.Kind -ne 'pro') { continue }
+        $base = Join-Path $src.D 'Earth nav data'
+        if (-not (Test-Path -LiteralPath $base)) { continue }
+        foreach ($f in @(Get-ChildItem -LiteralPath $base -Recurse -File -Filter '*.dsf')) {
+            if ($f.Name -match '^([+-]\d\d)([+-]\d\d\d)\.dsf$') { [void]$out.Add((TK ([int]$Matches[1]) ([int]$Matches[2]))) }
+        }
+    }
+    return ,$out
+}
+function Get-HmTileSource($srcs, [int]$s, [int]$w) {
+    $rel = Get-ShTileRel $s $w
+    foreach ($src in $srcs) {
+        $p = Join-Path $src.D "Earth nav data/$rel"
+        if (Test-Path -LiteralPath $p) {
+            $p2 = Join-Path $src.D2 "Earth nav data/$rel"
+            return [pscustomobject]@{ Kind = $src.Kind; P1 = $p; P2 = $(if (Test-Path -LiteralPath $p2) { $p2 } else { $null }) }
+        }
+    }
+    return [pscustomobject]@{ Kind = $null; P1 = $null; P2 = $null }
+}
+function Get-CountryTiles([string]$key) {
+    $out = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($c in $CountryTable) { if ($c[0] -eq $key) { foreach ($s in $c[2].Keys) { for ($w = $c[2][$s][0]; $w -le $c[2][$s][1]; $w++) { [void]$out.Add((TK $s $w)) } } } }
+    return ,$out
+}
+function Get-SrcSig($t) {
+    $sig = @()
+    foreach ($p in @($t.P1, $t.P2)) {
+        if ($p) {
+            $fi = Get-Item -LiteralPath $p
+            $mt = [long][Math]::Floor(($fi.LastWriteTimeUtc - [DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).TotalSeconds)
+            $sig += "$($fi.Directory.Parent.Parent.Name):$($fi.Length):$mt"
+        }
+    }
+    return ($sig -join ';')
+}
+
+function Get-HmInfo($xp) {
+    # settings of the built overlay or $null
+    $m = Join-Path (Get-ShPack $xp) 'hedgerow_map.txt'
+    if (-not (Test-Path -LiteralPath $m)) { return $null }
+    $text = [IO.File]::ReadAllText($m, $Latin1)
+    if (-not $text.StartsWith($KnickMark)) { return $null }
+    $o = [pscustomobject]@{ Choice = 'Knicks'; Countries = @(); Tiles = @{}; Version = '' }
+    foreach ($l in ($text -split "`r?`n")) {
+        $tok = @($l.Split(' ', [StringSplitOptions]::RemoveEmptyEntries))
+        if ($l.StartsWith($KnickMark) -and $tok.Count -gt 6) { $o.Version = $tok[6] }
+        elseif ($tok.Count -gt 1 -and $tok[0] -eq 'choice') { $o.Choice = $tok[1] }
+        elseif ($tok.Count -ge 1 -and $tok[0] -eq 'countries') { $o.Countries = @($tok | Select-Object -Skip 1) }
+        elseif ($tok.Count -ge 3 -and $tok[0] -eq 'tile') { $o.Tiles[(TK ([int]$tok[1]) ([int]$tok[2]))] = $(if ($tok.Count -gt 3) { $tok[3] } else { '' }) }
+    }
+    return $o
+}
+
+function Get-HmWant($xp, [string]$choice, $countries) {
+    $pro = Get-HmProTiles $xp
+    $want = New-Object 'System.Collections.Generic.HashSet[string]'
+    if ($choice -eq 'Knicks') { $want.UnionWith($KnickTiles) }
+    foreach ($c in $countries) { if ($c -eq 'all') { $want.UnionWith($pro) } else { $want.UnionWith((Get-CountryTiles $c)) } }
+    $want.IntersectWith($pro)
+    $want.UnionWith((Get-HmDataTiles))
+    return ,$want
+}
+
+function Build-HedgeOverlay($xp, [string]$choice, $countries, $only) {
+    # builds the hedge overlay; $only: tiles to rebuild ($null = all). Returns the set of built tiles.
+    $t0 = [DateTime]::Now
+    $d = Get-ShPack $xp
+    if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d | Out-Null }
+    Write-Host '  Reading the hedge maps ...'
+    Read-HmData
+    $srcs = Get-HmSources $xp
+    $tiles = Sort-Tiles (Get-HmWant $xp $choice $countries)
+    $info0 = Get-HmInfo $xp
+    $old = @{}
+    if ($info0 -and $info0.Version -eq $Version -and $info0.Choice -eq $choice) { $old = $info0.Tiles }
+    # remove tiles that are not wanted any more (also those of older versions)
+    $keep = @{}; foreach ($t in $tiles) { $sw = Split-TK $t; $keep[(Split-Path -Leaf (Get-ShTileRel $sw[0] $sw[1]))] = $true }
+    $end = Join-Path $d 'Earth nav data'
+    if (Test-Path -LiteralPath $end) { foreach ($f in @(Get-ChildItem -LiteralPath $end -Recurse -File -Filter '*.dsf')) { if (-not $keep.ContainsKey($f.Name)) { Remove-Item -LiteralPath $f.FullName } } }
+    $sigs = @{}; foreach ($k in $old.Keys) { if ($tiles -contains $k) { $sigs[$k] = $old[$k] } }
+    $todo = @($tiles | Where-Object { $null -eq $only -or $only.Contains($_) -or -not $old.ContainsKey($_) })
+    $total = 0; $kept = 0
+    $agent = "XP12 Forest Tweak $Version (hedge overlay, see ATTRIBUTION.txt)"
+    $p = New-Prog 'Hedge tiles' $todo.Count; $i = 0
+    foreach ($t in $todo) {
+        $i++; Step-Prog $p $i $i $todo.Count
+        $sw = Split-TK $t; $s = $sw[0]; $w = $sw[1]
+        $knick = $choice -eq 'Knicks' -and $KnickTiles.Contains($t)
+        $src = Get-HmTileSource $srcs $s $w
+        $bytes = [FdtHedgeMap]::BuildTile($s, $w, $src.Kind, $src.P1, $src.P2, $knick, $agent, $(if ($knick) { $ShVKnick } else { $HmVHedge }), $ShVRow)
+        $path = Join-Path $d ('Earth nav data/' + (Get-ShTileRel $s $w))
+        $pd = Split-Path -Parent $path
+        if (-not (Test-Path -LiteralPath $pd)) { New-Item -ItemType Directory -Path $pd | Out-Null }
+        Write-Bytes $path $bytes
+        $sigs[$t] = Get-SrcSig $src
+        $total += [FdtHedgeMap]::LastMap; $kept += [FdtHedgeMap]::LastKept
+    }
+    End-Prog $p
+    if (Test-Path -LiteralPath $end) { foreach ($sub in @(Get-ChildItem -LiteralPath $end -Directory)) { if (@(Get-ChildItem -LiteralPath $sub.FullName -Force).Count -eq 0) { Remove-Item -LiteralPath $sub.FullName } } }
+    $att = @('XP12 Forest Tweak - hedge overlay (made on this computer)', '',
+             'Hedges, hedgebanks (Knicks), tree rows and copses from official maps (changed: only outlines and type',
+             'kept, compact format, turned into X-Plane forest strips and tree rows, cut into 1x1 degree tiles):')
+    foreach ($f in $HmFiles) { if ($script:HmFound -contains $f[0]) { $att += "  $($f[2]): $($f[3])"; $att += "    $($f[4])" } }
+    $att += @('', 'Hedges and tree rows where the maps have none: taken over from the simHeaven scenery on this',
+              'computer (OpenStreetMap data, (c) OpenStreetMap contributors, ODbL).',
+              'The data providers do not endorse this project.',
+              'Made for use on this computer only - do not share this folder.', '',
+              'Restore original in XP12 Forest Tweak removes this folder.')
+    Write-Bytes (Join-Path $d 'ATTRIBUTION.txt') ([Text.Encoding]::ASCII.GetBytes(($att -join "`r`n") + "`r`n"))
+    $info = @("$KnickMark $Version - do not edit", "choice $choice", ('countries ' + ($countries -join ' ')))
+    foreach ($t in $tiles) { $sw = Split-TK $t; $info += "tile $($sw[0]) $($sw[1]) $($sigs[$t])" }
+    Write-Bytes (Join-Path $d 'hedgerow_map.txt') ([Text.Encoding]::ASCII.GetBytes(($info -join "`r`n") + "`r`n"))
+    [void](Set-ShIniPlace $xp)
+    $took = Took $t0
+    TLog "hedge overlay: $($todo.Count) of $($tiles.Count) tiles built, $total map features, $kept simHeaven features ($took)"
+    Write-Host "  Hedge overlay: $($tiles.Count) tiles, $total features from the hedge maps ($took)" -ForegroundColor Green
+    $set = New-Object 'System.Collections.Generic.HashSet[string]'; foreach ($t in $tiles) { [void]$set.Add($t) }
+    return ,$set
+}
+
+function Get-HmChanged($xp) {
+    # tiles whose simHeaven source changed since they were built (e.g. after a simHeaven update)
+    $out = New-Object 'System.Collections.Generic.HashSet[string]'
+    $info = Get-HmInfo $xp
+    if (-not $info) { return ,$out }
+    $srcs = Get-HmSources $xp
+    foreach ($t in $info.Tiles.Keys) { $sw = Split-TK $t; if ((Get-SrcSig (Get-HmTileSource $srcs $sw[0] $sw[1])) -ne $info.Tiles[$t]) { [void]$out.Add($t) } }
+    return ,$out
+}
 
 function Get-KnickPath($xp) { Join-Path $xp "Custom Scenery/$KnickDir" }
 
@@ -1319,14 +1638,15 @@ function Test-PackLine([string]$line, [string]$folder) {
     return $false
 }
 
-function Set-KnickIniPlace($xp) {
-    # lists the Knick library directly above the simHeaven Vegetation Library; $true if changed
+function Set-PackPlace($xp, [string]$folder, [string]$rx, [string]$fallbackFolder) {
+    # lists $folder directly above the first line matching $rx; $true if changed
     $ini = Read-Ini $xp
     if (-not $ini) { return $false }
-    $mine = "SCENERY_PACK Custom Scenery/$KnickDir/"
-    $rest = @($ini.Lines | Where-Object { -not (Test-PackLine $_ $KnickDir) })
+    $mine = "SCENERY_PACK Custom Scenery/$folder/"
+    $rest = @($ini.Lines | Where-Object { -not (Test-PackLine $_ $folder) })
     $i = -1
-    for ($k = 0; $k -lt $rest.Count; $k++) { if ($rest[$k] -match '(?i)simheaven.*vegetation.*librar') { $i = $k; break } }
+    for ($k = 0; $k -lt $rest.Count; $k++) { if ($rest[$k] -match $rx) { $i = $k; break } }
+    if ($i -lt 0 -and $fallbackFolder) { for ($k = 0; $k -lt $rest.Count; $k++) { if (Test-PackLine $rest[$k] $fallbackFolder) { $i = $k; break } } }
     if ($i -lt 0) { for ($k = 0; $k -lt $rest.Count; $k++) { if ($rest[$k].StartsWith('SCENERY_PACK')) { $i = $k; break } } }
     if ($i -lt 0) { $i = $rest.Count }
     $new = @()
@@ -1337,6 +1657,10 @@ function Set-KnickIniPlace($xp) {
     Write-Ini $xp $new $ini.NL
     return $true
 }
+# the tweak library directly above the simHeaven libraries (free Vegetation Library or X-WORLD Pro Library)
+function Set-KnickIniPlace($xp) { Set-PackPlace $xp $KnickDir '(?i)simheaven.*(vegetation.*librar|X-WORLD-Pro_Library)' $null }
+# the hedge overlay above all simHeaven packs: their forest exclusions would hide it otherwise
+function Set-ShIniPlace($xp) { Set-PackPlace $xp $ShDir '(?i)^SCENERY_PACK(_DISABLED)?\s+Custom Scenery/simHeaven_X-World(_|-Pro_(?!Library|Add-ons))' $KnickDir }
 
 function Remove-KnickIni($xp) {
     $ini = Read-Ini $xp
@@ -1344,9 +1668,10 @@ function Remove-KnickIni($xp) {
     Write-Ini $xp @($ini.Lines | Where-Object { -not (Test-PackLine $_ $KnickDir) }) $ini.NL
 }
 
-function Write-Knicks($xp, [double]$h, [string]$hp, [bool]$kmap = $false) {
-    # creates or updates the Knick library for tree height $h / profile $hp. $kmap: the hedgerow map of
-    # Schleswig-Holstein is installed -> its tiles get empty simHeaven hedges/tree rows (the map has them)
+function Write-Knicks($xp, [double]$h, [string]$hp, $built, [string]$choice = 'Knicks') {
+    # creates or updates the tweak library for tree height $h / profile $hp. $built: tiles of the hedge overlay
+    # (there the simHeaven hedges and tree rows are hidden, the overlay has them). $choice: 'Knicks' or 'enhanced'
+    if ($null -eq $built) { $built = New-Object 'System.Collections.Generic.HashSet[string]' }
     $d = Get-KnickPath $xp
     if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d | Out-Null }
     $tex = Join-Path $xp 'Resources/default scenery/1200 forests/textures'
@@ -1384,29 +1709,37 @@ function Write-Knicks($xp, [double]$h, [string]$hp, [bool]$kmap = $false) {
                'TEXTURE trees_bb1_ALB.png', 'LOD 1', 'SCALE_X 2048', 'SCALE_Y 4096', 'SPACING 10000 10000', 'RANDOM 0 0',
                "TREE`t224`t2848`t118`t124`t59`t100`t0.1`t0.1`t2`t0`tnone")
     Write-Bytes (Join-Path $d 'blank.for') ([Text.Encoding]::ASCII.GetBytes(($blank -join "`r`n") + "`r`n"))
-    $lib = @('A', '800', 'LIBRARY', '', ("$KnickMark $Version | height $(Fmt $h) $hp" + $(if ($kmap) { ' | map' } else { '' })),
-             '# Knicks: replaces the simHeaven X-World hedges, tree rows and scrub only in the Knick areas',
-             "# ($KnickArea).",
+    Write-Bytes (Join-Path $d 'blank.fac') ([Text.Encoding]::ASCII.GetBytes($BlankFac))
+    $lib = @('A', '800', 'LIBRARY', '', ("$KnickMark $Version | height $(Fmt $h) $hp | choice $choice" + $(if ($built.Count) { ' | map' } else { '' })),
+             '# Hedges: hedgebanks (Knicks) in the Knick areas, enhanced hedges elsewhere, for all four seasons.',
+             "# Knick areas: $KnickArea.",
              '# simHeaven files are not changed. Restore original removes this folder.', '')
     foreach ($s in $KnickSeasons) {
         $lib += "EXPORT_SEASON $($s[0]) $ShVKnick knickmap_$($s[0]).for"
         $lib += "EXPORT_SEASON $($s[0]) $ShVRow treerow_$($s[0]).for"
+        $lib += "EXPORT_SEASON $($s[0]) $HmVHedge hedge_$($s[0]).for"
     }
-    $lib += @('', 'REGION_DEFINE xp12_foresttweak_knicks_north')
-    foreach ($r in $(if ($kmap) { $KnickRectsNoMap } else { $KnickRects })) { $lib += "REGION_RECT $r" }
-    $lib += @('REGION xp12_foresttweak_knicks_north', '')
-    foreach ($k in $KnickKinds) {
-        if ($k[6]) { foreach ($s in $KnickSeasons) { $lib += "EXPORT_EXCLUDE_SEASON $($s[0]) $($k[6]) $($k[0])_$($s[0]).for" } }
+    $libTiles = New-Object 'System.Collections.Generic.HashSet[string]'
+    if ($choice -eq 'Knicks') { $libTiles.UnionWith($KnickTiles); $libTiles.ExceptWith($built) }
+    if ($libTiles.Count) {
+        $lib += @('', '# Knick areas without overlay tiles: free X-World hedges, tree rows and scrub become Knicks', 'REGION_DEFINE xp12_foresttweak_knicks_north')
+        foreach ($r in (Get-TilesRects $libTiles)) { $lib += "REGION_RECT $r" }
+        $lib += @('REGION xp12_foresttweak_knicks_north', '')
+        foreach ($k in $KnickKinds) { if ($k[6]) { foreach ($s in $KnickSeasons) { $lib += "EXPORT_EXCLUDE_SEASON $($s[0]) $($k[6]) $($k[0])_$($s[0]).for" } } }
     }
-    if ($kmap) {
-        $lib += @('', '# tiles of the hedgerow map (Schleswig-Holstein): its Knicks and tree rows replace the simHeaven ones',
-                  'REGION_DEFINE xp12_foresttweak_knick_map')
-        foreach ($r in $ShRects) { $lib += "REGION_RECT $r" }
-        $lib += @('REGION xp12_foresttweak_knick_map', '')
+    $bk = New-Object 'System.Collections.Generic.HashSet[string]'
+    if ($choice -eq 'Knicks') { $bk.UnionWith($built); $bk.IntersectWith($KnickTiles) }
+    $other = New-Object 'System.Collections.Generic.HashSet[string]'; $other.UnionWith($built); $other.ExceptWith($bk)
+    foreach ($g in @(@('xp12_foresttweak_overlay_knick', $bk, $true), @('xp12_foresttweak_overlay', $other, $false))) {
+        if (-not $g[1].Count) { continue }
+        $lib += @('', ('# tiles of the hedge overlay: its hedges' + $(if ($g[2]) { ' and tree rows' } else { '' }) + ' replace the simHeaven ones'), "REGION_DEFINE $($g[0])")
+        foreach ($r in (Get-TilesRects $g[1])) { $lib += "REGION_RECT $r" }
+        $lib += @("REGION $($g[0])", '')
+        foreach ($vp in $ProHedgeFac) { $lib += "EXPORT_EXCLUDE $vp blank.fac" }
         foreach ($s in $KnickSeasons) {
-            $lib += "EXPORT_EXCLUDE_SEASON $($s[0]) simheaven/forests/hedge.for blank.for"
-            $lib += "EXPORT_EXCLUDE_SEASON $($s[0]) simheaven/forests/random_tree.for blank.for"
-            $lib += "EXPORT_EXCLUDE_SEASON $($s[0]) simheaven/forests/shrubs.for scrub_$($s[0]).for"
+            $vps = @($HedgeVPath) + $ProHedgeFor; if ($g[2]) { $vps += $RowVPath }
+            foreach ($vp in $vps) { $lib += "EXPORT_EXCLUDE_SEASON $($s[0]) $vp blank.for" }
+            if ($g[2]) { $lib += "EXPORT_EXCLUDE_SEASON $($s[0]) simheaven/forests/shrubs.for scrub_$($s[0]).for" }
         }
     }
     Write-Bytes (Join-Path $d 'library.txt') ([Text.Encoding]::ASCII.GetBytes(($lib -join "`r`n") + "`r`n"))
@@ -1417,7 +1750,7 @@ function Write-Knicks($xp, [double]$h, [string]$hp, [bool]$kmap = $false) {
 function Remove-Knicks($xp) {
     $d = Get-KnickPath $xp
     if (Test-Path -LiteralPath $d) {
-        $names = @('library.txt', 'blank.for')
+        $names = @('library.txt', 'blank.for', 'blank.fac')
         foreach ($k in $KnickKinds) { foreach ($s in $KnickSeasons) { $names += "$($k[0])_$($s[0]).for" } }
         foreach ($n in $KnickTextures) { $names += "$n.dds"; $names += "$n.png" }
         foreach ($f in @(Get-ChildItem -LiteralPath $d -File)) {
@@ -1437,20 +1770,18 @@ function Get-KnickLibVersion($xp) {
     return $null
 }
 
-function Get-HedgeChoice($xp, $overall) { if ((Get-KnickInfo $xp).On) { 'Knicks' } else { $overall } }
+function Get-HedgeChoice($xp, $overall) {
+    # current hedge choice: 'default', 'enhanced' or 'Knicks'
+    if ((Get-KnickInfo $xp).On) {
+        $lt = Join-Path (Get-KnickPath $xp) 'library.txt'
+        $txt = [IO.File]::ReadAllText($lt, $Latin1)
+        if ($txt -match '\|\s*choice\s+(\w+)') { return $Matches[1] }
+        return 'Knicks'
+    }
+    if ($overall) { return $overall }
+    return 'default'
+}
 
-function Test-KnickHasMap($xp) {
-    $lt = Join-Path (Get-KnickPath $xp) 'library.txt'
-    if (-not (Test-Path -LiteralPath $lt)) { return $false }
-    foreach ($l in [IO.File]::ReadAllLines($lt, $Latin1)) { if ($l.StartsWith($KnickMark) -and $l.TrimEnd().EndsWith('| map')) { return $true } }
-    return $false
-}
-function Get-ShMapFile {
-    # the hedgerow map shipped with the tool: next to it, or one folder up (ZIP with all systems)
-    $up = Split-Path -Parent $PSScriptRoot
-    foreach ($d in @($PSScriptRoot, $up, (Join-Path $up 'data'))) { $p = Join-Path $d $ShFile; if (Test-Path -LiteralPath $p) { return $p } }
-    return $null
-}
 function Get-ShPack($xp) { Join-Path $xp "Custom Scenery/$ShDir" }
 function Get-ShTileRel([int]$s, [int]$w) {
     $f = '{0}{1:00}{2}{3:000}' -f $(if ($s -lt 0) { '-' } else { '+' }), [Math]::Abs([Math]::Floor($s / 10) * 10), $(if ($w -lt 0) { '-' } else { '+' }), [Math]::Abs([Math]::Floor($w / 10) * 10)
@@ -1460,81 +1791,6 @@ function Get-ShTileRel([int]$s, [int]$w) {
 function Test-ShInfo($xp) {
     $m = Join-Path (Get-ShPack $xp) 'hedgerow_map.txt'
     (Test-Path -LiteralPath $m) -and ([IO.File]::ReadAllText($m, $Latin1).StartsWith($KnickMark))
-}
-function Test-ShComplete($xp) {
-    if (-not (Test-ShInfo $xp)) { return $false }
-    foreach ($t in [FdtKnickMap]::Tiles) { if (-not (Test-Path -LiteralPath (Join-Path (Get-ShPack $xp) ('Earth nav data/' + (Get-ShTileRel $t[0] $t[1]))))) { return $false } }
-    return $true
-}
-
-function Build-ShMap($xp) {
-    # turns the hedgerow map into the scenery pack $ShDir; $true if done
-    $src = Get-ShMapFile
-    if (-not $src) {
-        Write-Host "  The hedgerow map ($ShFile) is missing next to the tool - Knicks stay as in the simHeaven data." -ForegroundColor Red
-        Write-Host '  Unzip the complete tool ZIP again, then run Choose settings once more.'
-        TLog 'hedgerow map: data file missing'
-        return $false
-    }
-    $t0 = [DateTime]::Now
-    Write-Host '  Building the hedgerow map (about a minute) ...'
-    [FdtKnickMap]::ReadMap($src)
-    $d = Get-ShPack $xp
-    $total = 0
-    $agent = "XP12 Forest Tweak $Version (hedgerow map: $ShAttrib)"
-    $tiles = [FdtKnickMap]::Tiles
-    for ($i = 0; $i -lt $tiles.Length; $i++) {
-        Write-Host -NoNewline ("`r  Hedgerow map tiles: {0} / {1}   " -f ($i + 1), $tiles.Length)
-        $s = $tiles[$i][0]; $w = $tiles[$i][1]
-        $shv = Join-Path $xp ('Custom Scenery/simHeaven_X-World_Europe-4-extras/Earth nav data/' + (Get-ShTileRel $s $w))
-        if (-not (Test-Path -LiteralPath $shv)) { $shv = $null }
-        $bytes = [FdtKnickMap]::BuildTile($i, $shv, $agent, $ShVKnick, $ShVRow)
-        $path = Join-Path $d ('Earth nav data/' + (Get-ShTileRel $s $w))
-        $pd = Split-Path -Parent $path
-        if (-not (Test-Path -LiteralPath $pd)) { New-Item -ItemType Directory -Path $pd | Out-Null }
-        Write-Bytes $path $bytes
-        $total += [FdtKnickMap]::LastSh
-        TLog "hedgerow map: tile $s/$w`: $([FdtKnickMap]::LastSh) map features, $([FdtKnickMap]::LastKept) simHeaven hedges/tree rows kept"
-    }
-    [FdtKnickMap]::Lines = $null
-    Write-Host -NoNewline ("`r" + (' ' * 40) + "`r")
-    $att = @('XP12 Forest Tweak - hedgerow map (made on this computer)', '',
-             'Knicks (hedgerows), Feldhecken, Baumreihen and Alleen of Schleswig-Holstein:',
-             "  Source: $ShAttrib",
-             '  https://creativecommons.org/licenses/by/4.0/',
-             "  $ShUrl",
-             '  Changes: lines converted into X-Plane forest strips and tree rows, cut into 1x1 degree tiles.', '',
-             'Hedges and tree rows where the map has none (e.g. Denmark, gardens): taken over from the',
-             'simHeaven X-World scenery on this computer (OpenStreetMap data, (c) OpenStreetMap contributors, ODbL).',
-             'Made for use on this computer only - do not share this folder.', '',
-             'Restore original in XP12 Forest Tweak removes this folder.')
-    Write-Bytes (Join-Path $d 'ATTRIBUTION.txt') ([Text.Encoding]::ASCII.GetBytes(($att -join "`r`n") + "`r`n"))
-    Write-Bytes (Join-Path $d 'hedgerow_map.txt') ([Text.Encoding]::ASCII.GetBytes("$KnickMark $Version - do not edit`r`n"))
-    [void](Set-ShIniPlace $xp)
-    $took = Took $t0
-    TLog "hedgerow map: $total features in $($tiles.Length) tiles ($took)"
-    Write-Host "  Hedgerow map: $total Knicks, hedges and tree rows ($took)" -ForegroundColor Green
-    return $true
-}
-
-function Set-ShIniPlace($xp) {
-    # lists the hedgerow map above all simHeaven X-World packs: their forest exclusions would hide it otherwise
-    $ini = Read-Ini $xp
-    if (-not $ini) { return $false }
-    $mine = "SCENERY_PACK Custom Scenery/$ShDir/"
-    $rest = @($ini.Lines | Where-Object { -not (Test-PackLine $_ $ShDir) })
-    $i = -1
-    for ($k = 0; $k -lt $rest.Count; $k++) { if ($rest[$k] -match '(?i)^SCENERY_PACK(_DISABLED)?\s+Custom Scenery/simHeaven_X-World_') { $i = $k; break } }
-    if ($i -lt 0) { for ($k = 0; $k -lt $rest.Count; $k++) { if (Test-PackLine $rest[$k] $KnickDir) { $i = $k; break } } }
-    if ($i -lt 0) { for ($k = 0; $k -lt $rest.Count; $k++) { if ($rest[$k].StartsWith('SCENERY_PACK')) { $i = $k; break } } }
-    if ($i -lt 0) { $i = $rest.Count }
-    $new = @()
-    if ($i -gt 0) { $new += $rest[0..($i - 1)] }
-    $new += $mine
-    if ($i -lt $rest.Count) { $new += $rest[$i..($rest.Count - 1)] }
-    if (($new -join "`n") -eq ($ini.Lines -join "`n")) { return $false }
-    Write-Ini $xp $new $ini.NL
-    return $true
 }
 
 function Remove-ShMap($xp) {
@@ -1557,16 +1813,18 @@ function Remove-ShMap($xp) {
 
 # ---------------------------------------------------------------- [1] choose settings
 function Read-Spacing([double]$current, [bool]$tweaked) {
-    Write-Host '  Step 1  Tree spacing (forest density)'
-    Write-Host '          Lower spacing = closer trees = denser forest. 1.0 = original.'
-    for ($i = 0; $i -lt 3; $i++) { Write-Host ('          [{0}] {1,-11} {2,-4}  {3}' -f ($i + 1), $Presets[$i][0], (Fmt $Presets[$i][1]), $Presets[$i][2]) }
-    Write-Host '          [4] Custom      your own value from 0.4 to 1.0'
+    Write-Host '  Step 1/3  Tree spacing'
+    Write-Host '  Lower = closer trees = denser forest.'
+    Write-Host ''
+    for ($i = 0; $i -lt 3; $i++) { Write-Host ('    [{0}] {1,-11} {2,-4}  {3}' -f ($i + 1), $Presets[$i][0], (Fmt $Presets[$i][1]), $Presets[$i][2]) }
+    Write-Host "    [4] Custom      $(Fmt $MinFac) - 1.0"
+    Write-Host ''
     $cur = $null
     for ($i = 0; $i -lt 3; $i++) { if ($Presets[$i][1] -eq $current) { $cur = "$($i + 1)" } }
     if (-not $tweaked) { $cur = '2'; $current = $DefaultFac }
     $hint = if ($cur) { "Enter = $cur" } else { "Enter = keep $(Fmt $current)" }
     while ($true) {
-        $a = (Read-Host "  Choose 1-4 ($hint)").Trim()
+        $a = (Read-Host "  Choose ($hint)").Trim()
         if ($a -eq '') { return $current }
         if ($a -match '^[123]$') { return [double]$Presets[[int]$a - 1][1] }
         if ($a -eq '4') { return (Read-Value $MinFac $current 'tree spacing') }
@@ -1576,17 +1834,20 @@ function Read-Spacing([double]$current, [bool]$tweaked) {
     }
 }
 
-function Read-Height([double]$current) {
-    Write-Host '  Step 2  Tree height'
-    Write-Host '          Lower value = smaller trees. 1.0 = original. Includes the 3D tree models.'
-    for ($i = 0; $i -lt $HeightPresets.Count; $i++) { Write-Host ('          [{0}] {1,-16} {2,-4}  {3}' -f ($i + 1), $HeightPresets[$i][0], ([double]$HeightPresets[$i][1]).ToString('0.0', $Inv), $HeightPresets[$i][2]) }
+function Read-Height([double]$current, [bool]$tweaked) {
+    Write-Host '  Step 2/3  Tree height'
+    Write-Host '  Lower = smaller trees. Conifers shrink a bit less. 3D tree models included.'
+    Write-Host ''
+    for ($i = 0; $i -lt $HeightPresets.Count; $i++) { Write-Host ('    [{0}] {1,-16} {2,-4}' -f ($i + 1), $HeightPresets[$i][0], ([double]$HeightPresets[$i][1]).ToString('0.0', $Inv)) }
     $n = $HeightPresets.Count + 1
-    Write-Host "          [$n] Custom           your own value from $(Fmt $MinHeight) to 1.0"
+    Write-Host "    [$n] Custom           $(Fmt $MinHeight) - 1.0"
+    Write-Host ''
+    if (-not $tweaked) { $current = $DefaultHeight }
     $cur = $null
     for ($i = 0; $i -lt $HeightPresets.Count; $i++) { if ($HeightPresets[$i][1] -eq $current) { $cur = "$($i + 1)" } }
     $hint = if ($cur) { "Enter = $cur" } else { "Enter = keep $(Fmt $current)" }
     while ($true) {
-        $a = (Read-Host "  Choose 1-$n ($hint)").Trim()
+        $a = (Read-Host "  Choose ($hint)").Trim()
         if ($a -eq '') { return $current }
         if ($a -match '^\d+$' -and [int]$a -ge 1 -and [int]$a -lt $n) { return [double]$HeightPresets[[int]$a - 1][1] }
         if ($a -eq "$n") { return (Read-Value $MinHeight $current 'tree height') }
@@ -1596,129 +1857,198 @@ function Read-Height([double]$current) {
     }
 }
 
-function Read-Profile([double]$hf, [string]$current) {
-    $ex = { param($w) Fmt (Rnd (1.0 - (1.0 - $hf) * $w) 4) }
-    Write-Host '  Step 3  Height profile'
-    Write-Host "          [1] uniform    every tree $(Fmt $hf)"
-    Write-Host "          [2] realistic  broadleaf $(Fmt $hf), conifers $(& $ex 0.6), palms $(& $ex 0.8), shrubs/orchards $(& $ex 0.5)"
-    Write-Host '                         (conifers are often the tallest trees in reality, so they shrink less)'
-    $cur = if ($current -eq 'uniform') { '1' } else { '2' }
+function Read-Hedges([string]$current) {
+    Write-Host '  Step 3/3  Hedges'
+    Write-Host '  How hedges and tree rows look. Official hedge maps add missing hedges.'
+    Write-Host ''
+    Write-Host '    [1] Original     as simHeaven made them'
+    Write-Host '    [2] Enhanced     taller, greener hedges (4 - 5 m)'
+    Write-Host '    [3] Hedgebanks   Northern Germany and Denmark: bushes on earth banks'
+    Write-Host '        (Knicks)     with single hedgerow trees. Elsewhere: [2]'
+    Write-Host ''
+    $cur = if ($current -eq 'Knicks') { '3' } elseif ($current -eq 'enhanced') { '2' } else { '1' }
     while ($true) {
-        $a = (Read-Host "  Choose 1-2 (Enter = $cur)").Trim(); if ($a -eq '') { $a = $cur }
-        if ($a -eq '1') { return 'uniform' } elseif ($a -eq '2') { return 'realistic' }
-        Warn '  Please choose 1 or 2.'
+        $a = (Read-Host "  Choose (Enter = $cur)").Trim(); if ($a -eq '') { $a = $cur }
+        if ($a -eq '1') { return 'default' } elseif ($a -eq '2') { return 'enhanced' } elseif ($a -eq '3') { return 'Knicks' }
+        Warn '  Please choose 1, 2 or 3.'
     }
+}
+
+function Read-Countries($xp, $current) {
+    $pro = Get-HmProTiles $xp
+    $opts = @()
+    foreach ($c in $CountryTable) { $t = Get-CountryTiles $c[0]; $t.IntersectWith($pro); if ($t.Count) { $opts += ,@($c[0], $c[1], $t.Count) } }
+    Write-Host ''
+    Write-Host '  Countries - X-WORLD Pro hedges are rebuilt here (Knick areas always, about 2 s per tile):'
+    Write-Host ''
+    for ($i = 0; $i -lt $opts.Count; $i++) { Write-Host ('    [{0}] {1,-12} {2,4} tiles' -f ($i + 1), $opts[$i][1], $opts[$i][2]) }
+    Write-Host ('    [A] all X-WORLD Pro tiles on this computer  {0,4} tiles' -f $pro.Count)
+    Write-Host ''
+    $cur = if ($current -and @($current).Count) { @($current) } else { @('de', 'dk') }
+    if ($cur -contains 'all') { $hint = 'A' }
+    else {
+        $hint = (@(for ($i = 0; $i -lt $opts.Count; $i++) { if ($cur -contains $opts[$i][0]) { "$($i + 1)" } }) -join ',')
+        if (-not $hint) { $hint = 'none' }
+    }
+    while ($true) {
+        $a = (Read-Host "  Choose, e.g. 1,2,5 (Enter = $hint)").Trim().ToLower()
+        if ($a -eq '') { return $cur }
+        if ($a -eq 'a') { return @('all') }
+        $parts = @($a -split '[ ,;]+' | Where-Object { $_ })
+        $ok = $parts.Count -gt 0
+        foreach ($p in $parts) { if (-not ($p -match '^\d+$' -and [int]$p -ge 1 -and [int]$p -le $opts.Count)) { $ok = $false } }
+        if ($ok) { return @($parts | ForEach-Object { [int]$_ } | Sort-Object -Unique | ForEach-Object { $opts[$_ - 1][0] }) }
+        Warn "  Please type numbers from 1 to $($opts.Count) (e.g. 1,2) or A."
+    }
+}
+
+function Confirm-FreeOff($xp, $det) {
+    # free X-World and X-WORLD Pro both on for the same region -> offer to turn the free packs off
+    if (-not $det.Both.Count) { return $det }
+    $regions = $det.Both -join ', '
+    Write-Host ''
+    Warn "  simHeaven X-World (free) and X-WORLD Pro are both on for $regions."
+    Warn '  This shows buildings, forests and roads twice.'
+    Write-Host ''
+    if (-not (Ask-Yes '  Turn off the free packs of these regions in scenery_packs.ini? (backup kept) [Y/n]')) { return $det }
+    $ini = Read-Ini $xp
+    $low = @($det.Both | ForEach-Object { $_.ToLower() })
+    $new = @(foreach ($l in $ini.Lines) {
+        if ($l -match '(?i)^SCENERY_PACK\s+(Custom Scenery/simHeaven_X-World_(.+?)-\d-[^/]+/?)\s*$' -and $low -contains $Matches[2].ToLower()) { "SCENERY_PACK_DISABLED $($Matches[1])" } else { $l }
+    })
+    Write-Ini $xp $new $ini.NL
+    TLog "free X-World turned off for $regions"
+    Write-Host "  Free X-World turned off for $regions." -ForegroundColor Green
+    return (Get-HmDetect $xp)
 }
 
 function Invoke-ChooseSettings($xp, $targets) {
     if (Test-Blocked) { return }
+    $wasOff = Test-SwitchedOff $xp
     Confirm-TweakActive $xp $targets
-    $st = Get-ForestState $xp $targets
+    # state read at the start (or by Status) is still valid when nothing was changed since then
+    $st = $script:StCache
+    if ($wasOff -or -not $st) { $st = Get-ForestState $xp $targets }
     $tweaked = $st.N -gt 0
     $ho = Get-HedgeOverview $xp
     $ki = Get-KnickInfo $xp
-    $mOn = (Test-ShInfo $xp) -and (Test-KnickHasMap $xp)
-    $wantMap = $false
-    $hchoice = Get-HedgeChoice $xp $ho.Overall
+    $det = Confirm-FreeOff $xp (Get-HmDetect $xp)
+    $hasSh = [bool]($ho.Files.Count -or $det.Pro.Count -or $det.Free.Count)
+    $hchoice = if ($hasSh) { Get-HedgeChoice $xp $ho.Overall } else { 'default' }
+    $info = Get-HmInfo $xp
+    $curC = @(); if ($info) { $curC = @($info.Countries) }
     $hasGf = @($targets | Where-Object { (Rel $xp $_) -match '^Custom Scenery' }).Count -gt 0
     Write-Host ''
     Write-Host '  Nothing is changed until you confirm at the end.'
     Write-Host ''
+    Write-Host ''
     $fac = Read-Spacing $st.X $tweaked
     Write-Host ''
-    $hf = Read-Height $st.H
-    $hp = 'uniform'
-    if ($hf -lt 1.0) { Write-Host ''; $hp = Read-Profile $hf $(if ($st.H -lt 1.0) { $st.HP } else { 'realistic' }) }
-    $want = $null
-    if ($ho.Files.Count) {
-        Write-Host ''
-        Write-Host '  Step 4  simHeaven hedges'
-        Write-Host '          [1] default   2.2 - 2.8 m high, visible up to 4 km'
-        Write-Host '          [2] enhanced  about 4 - 5 m high, visible up to 8 km'
-        Write-Host '          [3] Knicks    Knick areas (SH, HH, NW Lower Saxony, W Mecklenburg, Denmark):'
-        Write-Host '                        hedges, tree rows and scrub become Knicks. Elsewhere: enhanced'
-        $cur = if ($hchoice -eq 'Knicks') { '3' } elseif ($hchoice -eq 'enhanced') { '2' } else { '1' }
-        while (-not $want) {
-            $a = (Read-Host "  Choose 1-3 (Enter = $cur)").Trim(); if ($a -eq '') { $a = $cur }
-            if ($a -eq '1') { $want = 'default' } elseif ($a -eq '2') { $want = 'enhanced' } elseif ($a -eq '3') { $want = 'Knicks' }
-        }
-        if ($want -eq 'Knicks') {
-            Write-Host ''
-            Write-Host '  Step 5  Hedgerow map Northern Germany/Denmark'
-            Write-Host '          Exact Knicks, field hedges, tree rows and avenues from the official map of'
-            Write-Host '          Schleswig-Holstein (LLUR SH, CC BY 4.0, included). Elsewhere in Northern Germany and'
-            Write-Host '          Denmark the simHeaven hedges stay. Built on this computer in about a minute.'
-            $defYes = $mOn -or -not $ki.On
-            $a = (Read-Host ("  Use the hedgerow map? [" + $(if ($defYes) { 'Y/n' } else { 'y/N' }) + "]")).Trim()
-            $wantMap = if ($a -eq '') { $defYes } else { $a -match '^[yYjJ]' }
-        }
-    }
+    Write-Host ''
+    $hf = Read-Height $st.H $tweaked
+    $hp = if ($hf -lt 1.0) { 'realistic' } else { 'uniform' }
+    Write-Host ''
+    Write-Host ''
+    $want = $hchoice; $wantC = $curC
+    if ($hasSh) {
+        $want = Read-Hedges $hchoice
+        if ($det.Pro.Count -and $want -ne 'default') { $wantC = @(Read-Countries $xp $curC) }
+    } else { Write-Host '  Step 3/3  Hedges   skipped - simHeaven X-World not installed' }
     # summary
-    $same = ($fac -eq $st.X) -and ($hf -eq $st.H) -and ($hp -eq $st.HP)
+    $same = (($fac -eq $st.X) -and ($hf -eq $st.H) -and ($hp -eq $st.HP)) -or (($fac -eq 1.0) -and ($hf -eq 1.0) -and ($st.X -eq 1.0) -and ($st.H -eq 1.0))
     $rebuild = $tweaked -and ((-not $same) -or $st.NOld -gt 0)       # restore first, then apply the new values
     $refresh = $tweaked -and $same -and $st.NOld -eq 0 -and $st.NOrig -gt 0
     $forestChange = $rebuild -or $refresh -or ((-not $tweaked) -and ($fac -ne 1.0 -or $hf -ne 1.0))
-    $hedgeChange = $ho.Files.Count -and $want -ne $hchoice
-    # Knick heights follow the tree height factor -> rewrite the library when it changes
-    $knickRegen = $ho.Files.Count -and $want -eq 'Knicks' -and $ki.On -and (($ki.H -ne $hf) -or ($ki.HP -ne $hp) -or ((Get-KnickLibVersion $xp) -ne $Version))
-    $mapChange = $ho.Files.Count -and $want -eq 'Knicks' -and ($wantMap -ne $mOn)
-    $hedgeChange = $hedgeChange -or $knickRegen -or $mapChange
+    $overlayOn = $want -ne 'default'
+    if (-not $det.Pro.Count) { $wantC = @() }
+    $changed = New-Object 'System.Collections.Generic.HashSet[string]'
+    if ($info -and $overlayOn) { $changed = Get-HmChanged $xp }
+    # tiles the plan wants that are not built (or built ones it does not want), e.g. after an earlier version
+    $planDiff = $false
+    if ($info -and $overlayOn -and $info.Version -eq $Version -and $info.Choice -eq $want) {
+        Write-Host '  Checking the hedge tiles ...'
+        $plan0 = Get-HmWant $xp $want $wantC
+        if ($plan0.Count -ne $info.Tiles.Count) { $planDiff = $true }
+        else { foreach ($t in $plan0) { if (-not $info.Tiles.ContainsKey($t)) { $planDiff = $true; break } } }
+    }
+    $overlayChange = $overlayOn -and ((-not $info) -or $info.Version -ne $Version -or $info.Choice -ne $want -or ((@($info.Countries | Sort-Object) -join ' ') -ne (@($wantC | Sort-Object) -join ' ')) -or $changed.Count -gt 0 -or $planDiff)
+    $libChange = $overlayOn -and ((-not $ki.On) -or $ki.H -ne $hf -or $ki.HP -ne $hp -or (Get-KnickLibVersion $xp) -ne $Version -or $hchoice -ne $want -or $overlayChange)
+    $hedgeChange = $hasSh -and ($want -ne $hchoice -or $overlayChange -or $libChange)
+    Write-Host ''
     Write-Host ''
     Write-Host '  Summary'
     Write-Host '  -------'
     $now = if ($tweaked) { Format-Forest $st.X $st.H $st.HP } else { 'original' }
-    if ($refresh) { $why = if ($st.NReset) { 'reset by an update' } else { 'not tweaked yet' }; Write-Host "  Forests : $now  ->  apply to $($st.NOrig) files $why" }
-    elseif ($tweaked -and $same -and $st.NOld) { Write-Host "  Forests : $now  ->  re-apply with the latest improvements" }
-    elseif ($forestChange) { Write-Host "  Forests : $now  ->  $(Format-Forest $fac $hf $hp)" }
-    else { Write-Host "  Forests : $now  (unchanged)" }
-    if ($forestChange -and $hasGf -and $fac -lt 1.0) {
-        Write-Host "            Global Forests v2: cropland (field trees, hedgerows) extra x$(Fmt $CropFac), sparse forests"
-        Write-Host "            extra x$(Fmt $SparseFac['25']) / x$(Fmt $SparseFac['50']) so they look less empty"
-    }
-    if ($ho.Files.Count) {
-        if ($want -eq $hchoice -and ($knickRegen -or $mapChange)) { Write-Host ('  Hedges  : Knicks' + $(if ($knickRegen) { if (($ki.H -ne $hf) -or ($ki.HP -ne $hp)) { '  ->  Knick heights follow the new tree height' } else { '  ->  updated to this version (new Knick heights)' } } else { '' })) }
-        elseif ($hedgeChange) { Write-Host "  Hedges  : $hchoice  ->  $want" } else { Write-Host "  Hedges  : $hchoice  (unchanged)" }
-        if ($want -eq 'Knicks') {
-            if ($mapChange) { Write-Host ("  Hedgerow map: $(if ($mOn) { 'on' } else { 'off' })  ->  " + $(if ($wantMap) { 'on (about a minute)' } else { 'off' })) }
-            elseif ($wantMap) { Write-Host '  Hedgerow map: on (unchanged)' }
+    if ($refresh) { $why = if ($st.NReset) { 'reset by an update' } else { 'not tweaked yet' }; Write-Host "  Forests   $now  ->  apply to $($st.NOrig) files $why" }
+    elseif ($tweaked -and $same -and $st.NOld) { Write-Host "  Forests   $now  ->  re-apply with the latest improvements" }
+    elseif ($forestChange) { Write-Host "  Forests   $now  ->  $(Format-Forest $fac $hf $hp)" }
+    else { Write-Host "  Forests   $now  (unchanged)" }
+    if ($hasSh) {
+        if ($want -ne $hchoice) { Write-Host "  Hedges    $($ChoiceNames[$hchoice])  ->  $($ChoiceNames[$want])" }
+        elseif ($libChange -and $want -eq 'Knicks' -and $ki.On -and ($ki.H -ne $hf -or $ki.HP -ne $hp)) { Write-Host "  Hedges    $($ChoiceNames[$want])  ->  heights follow the new tree height" }
+        else { Write-Host ("  Hedges    $($ChoiceNames[$want])" + $(if ($hedgeChange) { '  ->  updated' } else { '  (unchanged)' })) }
+        if ($det.Pro.Count -and $overlayOn) {
+            $names = if ($wantC -contains 'all') { 'all' } else { (@($CountryTable | Where-Object { $wantC -contains $_[0] } | ForEach-Object { $_[1] }) -join ', ') }
+            if (-not $names) { $names = 'none' }
+            Write-Host "  Countries $names (X-WORLD Pro)"
         }
     }
-    if (-not $forestChange -and -not $hedgeChange) { Write-Host '  Nothing to change.'; return }
+    Write-Host ''
+    Write-Host '  What is changed'
+    if ($forestChange) { Write-Host ('    {0,6} forest files      backups kept' -f $st.Files) }
+    if ($hedgeChange -and $overlayOn) {
+        $plan = Get-HmWant $xp $want $wantC
+        if ((-not $info) -or $info.Version -ne $Version -or $info.Choice -ne $want) { $nNew = $plan.Count }
+        else { $nNew = @($plan | Where-Object { -not $info.Tiles.ContainsKey($_) -or $changed.Contains($_) }).Count }
+        Write-Host ('    {0,6} hedge tiles       {1} to build, about {2} min' -f $plan.Count, $nNew, [Math]::Max(1, [int][Math]::Floor($nNew * 2 / 60)))
+        Write-Host '         1 tweak library     hedge types for all four seasons'
+    }
+    if ($hedgeChange -and $ho.Files.Count -and (($want -ne 'default') -ne ($ho.Overall -eq 'enhanced'))) { Write-Host ('    {0,6} free X-World hedge files' -f $ho.Files.Count) }
+    if ($hedgeChange -and -not $overlayOn -and ($ki.On -or (Test-ShInfo $xp))) { Write-Host '         2 tweak folders     removed' }
+    if (-not $forestChange -and -not $hedgeChange) { Write-Host '    nothing'; return }
     if ($forestChange -and $hf -lt 1.0) {
         $need = [long]((Get-Files $targets | Measure-Object Length -Sum).Sum * 0.35)
         $free = Get-Free $xp
-        Write-Host '  Smaller trees also scale the 3D tree models. A compressed backup of the originals is kept'
-        Write-Host ("  for an exact restore: about {0:N1} GB (free on drive: {1:N1} GB)." -f ($need / 1GB), ($free / 1GB))
+        Write-Host ''
+        Write-Host ("  Disk: about {0:N1} GB backups of the 3D tree models (free: {1:N1} GB)" -f ($need / 1GB), ($free / 1GB))
         if ($free -lt $need + 1GB) { Write-Host '  Not enough free disk space.' -ForegroundColor Red; return }
     }
     if ($forestChange) {
-        Warn "  Estimated time: $(Format-TimeRange (Get-Estimate $st $hf $rebuild)) (depends on your computer)."
-        Warn '  Please keep this window open.'
-    }
-    if (-not (Ask-Yes '  Apply these settings now? [Y/n]')) { Write-Host '  Cancelled - nothing was changed.'; return }
-    TLog "choose: $now -> spacing $fac height $hf $hp; hedges $hchoice -> $want"
-    if ($forestChange) {
-        if ($rebuild) {
-            Write-Host '  Restoring the original forests first ...'
-            if (-not (Invoke-Restore $xp $targets -Quiet)) { Write-Host '  Stopped before applying the new values.' -ForegroundColor Red; return }
-        }
-        if ($fac -ne 1.0 -or $hf -ne 1.0) { [void](Invoke-ApplyValues $xp $targets $fac $hf $hp) }
-        else { Write-Host '  Forests are original again.' -ForegroundColor Green }
-    }
-    if ($hedgeChange) {
-        if ($want -eq 'enhanced' -or $want -eq 'Knicks') { if ($ho.Overall -ne 'enhanced') { Apply-Hedges $xp $ho } }
-        elseif ($ho.Overall -ne 'default') { Restore-Hedges $xp $ho }
-        if ($want -eq 'Knicks') {
-            $haveMap = $mOn -and -not $mapChange
-            if ($wantMap -and -not $haveMap) { $haveMap = Build-ShMap $xp }
-            elseif (-not $wantMap -and (Test-ShInfo $xp)) { Remove-ShMap $xp; Write-Host '  Hedgerow map removed.' -ForegroundColor Green }
-            Write-Knicks $xp $hf $hp ($wantMap -and $haveMap)
-            Write-Host "  Knicks (Northern Germany/Denmark): library Custom Scenery\$KnickDir" -ForegroundColor Green
-            if (-not (Test-Path -LiteralPath (Get-IniPath $xp))) { Warn '  scenery_packs.ini not found - start X-Plane once, then run Check & repair.' }
-        } elseif ($ki.On -or (Test-ShInfo $xp)) { Remove-ShMap $xp; Remove-Knicks $xp; Write-Host '  Knicks removed.' -ForegroundColor Green }
+        Write-Host "  Time: $(Format-TimeRange (Get-Estimate $st $hf $rebuild)) for the forests (depends on your computer)"
+        if ($hasGf -and $fac -lt 1.0) { Write-Host "  Global Forests v2: cropland extra x$(Fmt $CropFac), sparse forests extra x$(Fmt $SparseFac['25']) / x$(Fmt $SparseFac['50'])" }
     }
     Write-Host ''
-    Write-Host '  Done! You can start X-Plane now. Type Q and press Enter to close this window.' -ForegroundColor Green
+    if (-not (Ask-Yes '  Apply now? [Y/n]')) { Write-Host '  Cancelled - nothing was changed.'; return }
+    TLog "choose: $now -> spacing $fac height $hf $hp; hedges $hchoice -> $want; countries $($wantC -join ' ')"
+    $ok = $true
+    Write-Host ''
+    if ($forestChange) {
+        if ($rebuild) {
+            Write-Host '  Restoring originals ...'
+            if (-not (Invoke-Restore $xp $targets -Quiet)) { Write-Host '  Stopped before applying the new values.' -ForegroundColor Red; return }
+        }
+        if ($fac -ne 1.0 -or $hf -ne 1.0) { $ok = Invoke-ApplyValues $xp $targets $fac $hf $hp }
+        else { Write-Host '  Forests are original again.' -ForegroundColor Green }
+    }
+    if ($hedgeChange -and $ok) {
+        if ($ho.Files.Count) {
+            if ($want -eq 'enhanced' -or $want -eq 'Knicks') { if ($ho.Overall -ne 'enhanced') { Apply-Hedges $xp $ho } }
+            elseif ($ho.Overall -ne 'default') { Restore-Hedges $xp $ho }
+        }
+        if ($overlayOn) {
+            if ($overlayChange) {
+                $only = $null      # $null = build all tiles (a HashSet must not go through 'if' output, it would be unrolled)
+                if ($info -and $info.Version -eq $Version -and $info.Choice -eq $want) { $only = $changed }
+                $built = Build-HedgeOverlay $xp $want $wantC $only
+            } else {
+                $built = New-Object 'System.Collections.Generic.HashSet[string]'; foreach ($k in $info.Tiles.Keys) { [void]$built.Add($k) }
+            }
+            Write-Knicks $xp $hf $hp $built $want
+            Write-Host "  Tweak library: Custom Scenery\$KnickDir" -ForegroundColor Green
+            if (-not (Test-Path -LiteralPath (Get-IniPath $xp))) { Warn '  scenery_packs.ini not found - start X-Plane once, then run Check & repair.' }
+        } elseif ($ki.On -or (Test-ShInfo $xp)) { Remove-ShMap $xp; Remove-Knicks $xp; Write-Host '  Hedge overlay and tweak library removed.' -ForegroundColor Green }
+    }
+    if ($ok) { Write-Host ''; Write-Host '  Done. Start X-Plane now.   [Q] Quit' -ForegroundColor Green }
 }
 
 # ---------------------------------------------------------------- [5] quick switch tweak <-> original
@@ -1888,7 +2218,8 @@ function Show-Status($xp, $targets) {
         Write-Host '  Your tweak is kept next to the files - [5] switches back in a few seconds.'
         return
     }
-    $st = Get-ForestState $xp $targets
+    $st = $script:StCache
+    if (-not $st) { $st = Get-ForestState $xp $targets; $script:StCache = $st }
     $ho = Get-HedgeOverview $xp
     Write-Host ''
     Write-Host "  Forest files checked : $($st.Files)"
@@ -1898,9 +2229,20 @@ function Show-Status($xp, $targets) {
     Write-Host "  Grass/shrubs (kept)  : $($st.NSkip)"
     if ($st.NOld) { Warn "  From an older version: $($st.NOld) files -> run Choose settings once for the latest improvements" }
     Write-Host "  simHeaven hedges     : $(Get-HedgeStatusText $ho)"
+    $det = Get-HmDetect $xp
+    $dl = @()
+    if ($det.Pro.Count) { $dl += "X-WORLD Pro ($($det.Pro -join ', '))" }
+    if ($det.Free.Count) { $dl += "X-World free ($($det.Free -join ', '))" }
+    Write-Host ('  simHeaven            : ' + $(if ($dl.Count) { $dl -join ', ' } else { 'not found' }))
+    if ($det.Both.Count) { Warn "  Free X-World and X-WORLD Pro are both on for $($det.Both -join ', ') - Choose settings can turn the free packs off" }
     if ((Get-KnickInfo $xp).On) {
-        Write-Host '  Knicks               : on (Northern Germany/Denmark: hedges and tree rows as Knicks)'
-        if ((Test-ShInfo $xp) -and (Test-KnickHasMap $xp)) { Write-Host "  Hedgerow map         : on (Custom Scenery/$ShDir, data: $ShAttrib)" }
+        Write-Host "  Hedges               : $($ChoiceNames[(Get-HedgeChoice $xp $ho.Overall)])"
+        $info = Get-HmInfo $xp
+        if ($info) {
+            $names = if ($info.Countries -contains 'all') { 'all' } else { (@($CountryTable | Where-Object { $info.Countries -contains $_[0] } | ForEach-Object { $_[1] }) -join ', ') }
+            Write-Host ("  Hedge overlay        : $($info.Tiles.Count) tiles (Custom Scenery/$ShDir)" + $(if ($names) { ", X-WORLD Pro: $names" } else { '' }))
+            Write-Host '                         official hedge maps: see DATA_LICENSES.txt'
+        }
     }
     $other = @(Get-OtherForestAddons $xp)
     if ($other.Count) {
@@ -1975,12 +2317,23 @@ function Invoke-CheckRepair($xp, $targets) {
     if ($sides) { Write-Host "  Quick switch copies            : $sides fixed or removed" }
     $ki = Get-KnickInfo $xp
     if ($ki.On) {
-        # rewrite the Knick library (missing textures etc.) and fix its place in scenery_packs.ini
-        $kmap = Test-ShComplete $xp
-        Write-Knicks $xp $ki.H $ki.HP $kmap
-        Write-Host '  Knicks library                 : checked, listed above simHeaven in scenery_packs.ini'
-        if ($kmap) { [void](Set-ShIniPlace $xp); Write-Host '  Hedgerow map                   : checked, listed above simHeaven X-World' }
-        elseif (Test-ShInfo $xp) { Warn '  Hedgerow map                   : incomplete - run Choose settings to build it again' }
+        # rebuild overlay tiles whose simHeaven source changed, rewrite the tweak library, fix scenery_packs.ini
+        $info = Get-HmInfo $xp
+        $choice = Get-HedgeChoice $xp $null
+        $built = New-Object 'System.Collections.Generic.HashSet[string]'
+        if ($info) {
+            foreach ($t in $info.Tiles.Keys) { [void]$built.Add($t) }
+            $ch = $null
+            if ($info.Version -eq $Version) { $ch = Get-HmChanged $xp }
+            if ($null -eq $ch -or $ch.Count) {
+                Write-Host "  Hedge overlay                  : $(if ($null -eq $ch) { 'all' } else { $ch.Count }) tiles out of date - building again"
+                $built = Build-HedgeOverlay $xp $choice $info.Countries $ch
+            }
+            [void](Set-ShIniPlace $xp)
+            Write-Host '  Hedge overlay                  : checked, listed above simHeaven'
+        }
+        Write-Knicks $xp $ki.H $ki.HP $built $choice
+        Write-Host '  Tweak library                  : checked, listed above the simHeaven libraries'
     }
     TLog "check: ok $okGz, reset $reset, gone $gone, orphans $orphans, tmp $tmp, empty dirs $empty, bad $bad ($(Took $t0))"
     if ($bad) {
@@ -2009,9 +2362,17 @@ try {
     Write-Host "  Folders : $((@($targets | ForEach-Object { Rel $xp $_ })) -join ', ')"
     if (Test-XPRunning) { Warn '  X-Plane is running - please quit it before changing anything.' }
     $st = Get-ForestState $xp $targets
+    $script:StCache = $st      # reused by Choose settings and Status until a menu action changes files
     $ho = Get-HedgeOverview $xp
     if (Test-SwitchedOff $xp) { Write-Host '  Status  : switched to ORIGINAL - your tweak is kept, [5] switches back' -ForegroundColor Cyan }
-    else { Write-Host "  Status  : $(Get-StatusLine $st $(if ($ho.Overall) { Get-HedgeChoice $xp $ho.Overall } else { $null }))" }
+    else {
+        Write-Host "  Status  : $(Get-StatusLine $st $(if ($ho.Overall -or (Get-KnickInfo $xp).On) { Get-HedgeChoice $xp $ho.Overall } else { $null }))"
+        $det = Get-HmDetect $xp
+        $dl = @()
+        if ($det.Pro.Count) { $dl += "X-WORLD Pro ($($det.Pro -join ', '))" }
+        if ($det.Free.Count) { $dl += "X-World free ($($det.Free -join ', '))" }
+        if ($dl.Count) { Write-Host "  simHeaven: $($dl -join ', ')" }
+    }
     Show-EnvHints $xp $targets $gf $ver[0] $ver[1]
     if ($upd) {
         try {
@@ -2028,7 +2389,8 @@ try {
         Write-Host ''
         $sw = if (Test-SwitchedOff $xp) { '[5] Switch back to tweak' } else { '[5] Switch to original' }
         Write-Host "  [1] Choose settings   [2] Restore original   [3] Status   [4] Check & repair   $sw   [Q] Quit"
-        switch -Regex ((Read-Host '  Choice').Trim()) {
+        $menuKey = (Read-Host '  Choice').Trim()
+        switch -Regex ($menuKey) {
             '^1$'    { Invoke-ChooseSettings $xp $targets }
             '^2$'    { Invoke-RestoreAll $xp $targets }
             '^3$'    { Show-Status $xp $targets }
@@ -2036,6 +2398,7 @@ try {
             '^5$'    { Invoke-SwitchMenu $xp $targets }
             '^[qQ]$' { return }
         }
+        if ($menuKey -match '^[1245]$') { $script:StCache = $null }      # files may have changed: read the state again next time
     }
 } catch {
     Write-Host ''
