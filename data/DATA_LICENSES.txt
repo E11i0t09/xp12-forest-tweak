@@ -1,0 +1,65 @@
+XP12 Forest Tweak - hedge map data files and their licenses
+===========================================================
+
+The hedge map files (hedgerow_map_*.dat) contain only the outlines and the type
+(hedge / hedgebank, tree row, copse) of the official data below, converted into a
+compact format. The data files are NOT under the tool license (CC BY-NC-SA 4.0):
+each one keeps the license of its source. Changes for all files: only geometry and
+type kept, all other attributes removed, coordinates converted to ETRS89 / UTM 32N
+(EPSG:4647) rounded to 0.1 m, written in a compact binary format. Denmark: stone
+walls (Stendige = Ja) left out. Agricultural data: only hedges (HK), tree rows (BR)
+and field copses (FH) kept. In X-Plane the data is turned into forest strips and
+tree rows on your computer.
+
+hedgerow_map_sh.dat - Schleswig-Holstein
+  Source : Landesamt fuer Umwelt des Landes Schleswig-Holstein (LLUR SH),
+           Biotopkartierung SH4 - Alleen, Knicks, Feldhecken und Baumreihen (2023)
+  Licence: CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
+  Dataset: https://opendata.schleswig-holstein.de/dataset/sh4-biotopkartierung-der-alleen-knicks-feldhecken-und-baumreihen
+
+hedgerow_map_ni.dat - Niedersachsen, Bremen, Hamburg
+  Source : (c) ML/SLA Niedersachsen/CC BY 4.0
+           Landschaftselemente in Niedersachsen, Bremen und Hamburg (InVeKoS)
+  Licence: CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
+  Dataset: https://inspire-geoportal.ec.europa.eu/srv/api/records/c0f447eb-151b-42a7-bdd0-e99b1062f67c
+  Service: https://sla.niedersachsen.de/agrarfoerderung/agrar_ref_inspire/wfs
+  Retrieved: 2026-11-07
+
+hedgerow_map_by.dat - Bayern
+  Source : Bayerisches Staatsministerium fuer Ernaehrung, Landwirtschaft, Forsten und Tourismus
+           InVeKoS LPIS - Landschaftselemente (INSPIRE-WFS BY LPIS)
+  Licence: CC BY 4.0  https://creativecommons.org/licenses/by/4.0/
+  Dataset: https://gdk.gdi-de.org/geonetwork/srv/api/records/2bf51905-de03-4a56-93c4-1bea034b3a4d
+  Service: https://gdiserv.bayern.de/srv66381/services/invekos_lpis-wfs
+  Retrieved: 2026-11-07
+
+hedgerow_map_bb.dat - Brandenburg
+  Source : (c) Ministerium fuer Land- und Ernaehrungswirtschaft, Umwelt und Verbraucherschutz
+           (Brandenburg), InVeKoS Landschaftselemente BB (Digitales Feldblockkataster)
+  Licence: Datenlizenz Deutschland - Namensnennung - Version 2.0 (dl-de/by-2-0)
+           https://www.govdata.de/dl-de/by-2-0
+  Dataset: https://gdk.gdi-de.org/geonetwork/srv/api/records/72ed0323-7f32-400f-8bc1-7f0bb6cb83ba
+  Service: https://inspire.brandenburg.de/services/lcv_dfbk_lf_wfs
+  Retrieved: 2026-11-07   The data has been changed (see above).
+
+hedgerow_map_nrw.dat - Nordrhein-Westfalen
+  Source : Land NRW (Landwirtschaftskammer NRW), Landschaftselemente in NRW
+  Licence: Datenlizenz Deutschland - Namensnennung - Version 2.0 (dl-de/by-2-0)
+           https://www.govdata.de/dl-de/by-2-0
+  Dataset: https://ckan.open.nrw.de/dataset/landschaftselemente-in-nrw-geo-nrw
+  File   : https://www.opengeodata.nrw.de/produkte/umwelt_klima/bodennutzung/landwirtschaft/LFK-ALE_EPSG25832_Shape.zip
+  Retrieved: 2026-11-07   The data has been changed (see above).
+
+hedgerow_map_dk.dat - Denmark
+  Source : Slots- og Kulturstyrelsen, Beskyttede sten- og jorddiger (via Danmarks Miljoeportal)
+  Licence: CC0 1.0 (no attribution required, given anyway)  https://creativecommons.org/publicdomain/zero/1.0/
+  Dataset: https://arealdata.miljoeportal.dk/datasets/urn:dmp:ds:beskyttede-sten-og-jorddiger
+  Retrieved: 2026-11-07
+
+Not included in the tool:
+  simHeaven X-World / X-WORLD Pro and OpenStreetMap data (ODbL, (c) OpenStreetMap
+  contributors) and Laminar Research files are only read on your computer; nothing of
+  them is part of the tool. The scenery the tool builds from them is for use on your
+  computer only - do not share it.
+
+The data providers do not endorse this project. No warranty for the data.
