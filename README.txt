@@ -1,4 +1,4 @@
-XP12 Forest Tweak  v1.5.1
+XP12 Forest Tweak  v1.5.2
 =========================
 
 Denser forests, optionally smaller trees (3D trees included) and real-looking
@@ -16,11 +16,11 @@ Do not copy it into Resources/plugins. No renaming needed.
 DOWNLOADS / FOLDERS
 -------------------
 Download the ZIP for your system - each one contains everything you need:
-  XP12_ForestTweak_v1.5.1_Windows.zip  (folder Windows/ in the repository)
+  XP12_ForestTweak_v1.5.2_Windows.zip  (folder Windows/ in the repository)
       Start_ForestTweak.bat            (double-click), no admin rights needed
-  XP12_ForestTweak_v1.5.1_macOS.zip    (folder macOS/)
+  XP12_ForestTweak_v1.5.2_macOS.zip    (folder macOS/)
       Start_ForestTweak_macOS.command  (double-click), needs Python 3.8+
-  XP12_ForestTweak_v1.5.1_Linux.zip    (folder Linux/)
+  XP12_ForestTweak_v1.5.2_Linux.zip    (folder Linux/)
       start_forest_tweak_linux.sh      (sh start_forest_tweak_linux.sh), Python 3.8+
   FlyWithLua/ForestDensityToggle.lua (optional in-sim window, in every ZIP)
 
@@ -35,7 +35,8 @@ HOW TO USE
    automatically). Otherwise the tool finds X-Plane via x-plane_install_12.txt
    or asks for the path.
 3. Start the tool for your system (see above).
-4. Menu: [1] Choose settings  [2] Restore original  [3] Status  [4] Check & repair
+4. Menu: [0] Recommended setup  [1] Choose settings  [2] Restore original
+   [3] Status  [4] Check & repair
    [5] Switch to original / back to tweak (a few seconds, nothing calculated again)
 
   Choose settings asks step by step - nothing is changed until you confirm
@@ -90,7 +91,7 @@ The tool finds out which simHeaven add-ons are installed (free X-World,
 X-WORLD Pro). Step 3 of Choose settings gives the same look with both:
   [1] Original    as simHeaven made them
   [2] Enhanced    green hedges about 4 - 5 m, visible up to 8 km.
-                  Free X-World: worldwide. X-WORLD Pro (grey walls): rebuilt
+                  Free X-World: worldwide. X-WORLD Pro (flat walls): rebuilt
                   as green hedges in the countries you choose (Germany,
                   Denmark, Benelux, Austria, Switzerland or all Pro tiles).
   [3] Hedgebanks  (Knicks) in the Knick areas (Schleswig-Holstein, Hamburg,

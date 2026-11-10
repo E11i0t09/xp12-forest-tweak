@@ -1,7 +1,16 @@
 # Changelog
 
+## 1.5.2
+- **[0] Recommended setup:** one key for good default settings.
+- **After an update** the tool offers to put the tweak back right at the start; the in-sim window warns when forests were reset.
+- **Hedge build safe if interrupted:** it goes on where it stopped.
+- Fix (Windows): hedge build stopped with "empty path" on tiles without a simHeaven file.
+- simHeaven packs on other drives are found; disk space is checked before building.
+- X-WORLD Pro: countries with Pro tiles are preselected.
+- macOS/Linux: hedge tiles are built on several CPU cores.
+
 ## 1.5.1
-- **simHeaven X-WORLD Pro:** the tool now finds which simHeaven add-ons are installed (free X-World, X-WORLD Pro, or none) and gives the same look for forests, hedges and bushes with both. X-WORLD Pro draws hedges as grey walls; with *Enhanced* or *Hedgebanks* they become green hedges with all four seasons in the countries you choose (Germany, Denmark, Benelux, Austria, Switzerland, or all Pro tiles). Built on your computer, nothing of simHeaven is shipped.
+- **simHeaven X-WORLD Pro:** the tool now finds which simHeaven add-ons are installed (free X-World, X-WORLD Pro, or none) and gives the same look for forests, hedges and bushes with both. X-WORLD Pro draws hedges as flat textured walls (facades) without seasons; with *Enhanced* or *Hedgebanks* they become green hedges with all four seasons in the countries you choose (Germany, Denmark, Benelux, Austria, Switzerland, or all Pro tiles). Built on your computer, nothing of simHeaven is shipped.
 - **Official hedge maps for more regions:** besides Schleswig-Holstein now also Niedersachsen/Bremen/Hamburg, Nordrhein-Westfalen, Bayern, Brandenburg and the Danish earth banks (diger). Hedges that OpenStreetMap does not have are added. In the Knick areas they become hedgebanks, elsewhere green hedges. All map files come with the tool, each under its own open license (see `data/DATA_LICENSES.txt`).
 - **Shorter menu, three steps:** tree spacing, tree height, hedges. The height profile is always *realistic* now (an existing *uniform* tweak changes at the next *Choose settings*, shown in the summary). New defaults when nothing is tweaked yet: spacing 0.7, height 0.7. The summary lists what will be changed.
 - **Hedges:** *[1] Original*, *[2] Enhanced* (green hedges 4–5 m), *[3] Hedgebanks (Knicks)*. With free X-World, *Enhanced* works worldwide at once; the hedge maps are added in their regions.

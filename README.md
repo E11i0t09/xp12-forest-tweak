@@ -52,7 +52,7 @@ In-sim window (`ForestDensityToggle.lua`): density from 1.0x to 2.8x as many tre
 - **Fuller sparse forests (Global Forests v2):** sparse forest areas get extra trees, dense areas stay as they are
 - **Optional: hedges** *original*, *enhanced* (green hedges 4–5 m, all four seasons) or **hedgebanks (Knicks)** with bushes and single trees in northern Germany and Denmark – with simHeaven X-World (free) and X-WORLD Pro, see below
 - **Official hedge maps** of Schleswig-Holstein, Lower Saxony/Bremen/Hamburg, North Rhine-Westphalia, Bavaria, Brandenburg and Denmark add the hedges OpenStreetMap does not have
-- **simHeaven X-WORLD Pro:** detected automatically. Its hedges (grey walls) become green hedges in the countries you choose
+- **simHeaven X-WORLD Pro:** detected automatically. Its hedges (flat textured walls (facades) without seasons) become green hedges in the countries you choose
 - **Fully reversible:** the original values are logged and restored byte-for-byte; 3D model backups are protected by a checksum
 - **Quick to reapply after updates:** reset files are detected and tweaked again, already tweaked files are skipped
 - **Never applied twice:** all versions share one backup log
@@ -69,13 +69,14 @@ In-sim window (`ForestDensityToggle.lua`): density from 1.0x to 2.8x as many tre
 2. Download the ZIP for your system from [Releases](../../releases) (`…_Windows.zip`, `…_macOS.zip` or `…_Linux.zip`) and unzip it anywhere. No renaming needed. If you unzip it into your X-Plane 12 folder, X-Plane is found automatically. Otherwise the tool reads `x-plane_install_12.txt` or asks for the path.
 3. Start the tool for your system (see below). If Global Forests v2 is installed, it asks whether to include it.
 4. Choose from the menu:
+   - `0` **Recommended setup** – tree spacing 0.7, tree height 0.7 and (with simHeaven) hedgebanks in one step, then the summary to confirm
    - `1` **Choose settings** – tree spacing, tree height and (with simHeaven) hedges, in three steps. Then a summary of what will be changed, with an estimated time; nothing is changed until you confirm it. With tree height and Global Forests v2 it can take 10 minutes or more
    - `2` **Restore original** – puts back the original forests and hedges
    - `3` **Status** – how many forest files are tweaked, hedges, other scenery with its own forests
    - `4` **Check & repair** – checks the backups, removes leftovers of an interrupted run and cleans up the log
    - `5` **Switch to original / back to tweak** – switches between your tweak and the original forests, hedges and Knicks in a few seconds, without calculating again
 
-Run it once. Run it again only after an X-Plane or Global Forests update.
+Run it once. After an X-Plane or Global Forests update, start it again: it notices reset files and offers to tweak them again with the same settings.
 
 ### Windows
 
@@ -140,14 +141,14 @@ To change a value later, just run *Choose settings* again: the tool restores the
 
 ### Hedges and hedgebanks (optional, with simHeaven)
 
-simHeaven X-World draws hedges from OpenStreetMap, for example the typical *Knicks* (hedgebanks: hedges on earth walls) in northern Germany. In the free X-World they are only 2.2–2.8 m high and disappear 4 km away. simHeaven X-WORLD Pro draws them as grey walls without seasons. Many hedges are missing in OpenStreetMap altogether, so from the air the fields look bare.
+simHeaven X-World draws hedges from OpenStreetMap, for example the typical *Knicks* (hedgebanks: hedges on earth walls) in northern Germany. In the free X-World they are only 2.2–2.8 m high and disappear 4 km away. simHeaven X-WORLD Pro draws them as flat textured walls (facades) without seasons. Many hedges are missing in OpenStreetMap altogether, so from the air the fields look bare.
 
 The tool finds out which simHeaven add-ons are installed. Step 3 of *Choose settings* gives the same look with both:
 
 | Choice | Free X-World | X-WORLD Pro |
 |---|---|---|
 | **[1] Original** | as simHeaven made them | as simHeaven made them |
-| **[2] Enhanced** | green hedges about 4–5 m, visible up to 8 km, worldwide | the walls become green hedges about 4–5 m in the countries you choose |
+| **[2] Enhanced** | green hedges about 4–5 m, visible up to 8 km, worldwide | the flat walls become green hedges about 4–5 m in the countries you choose |
 | **[3] Hedgebanks (Knicks)** | hedgebanks in the Knick areas, elsewhere *enhanced* | hedgebanks in the Knick areas, *enhanced* in the other chosen countries |
 
 All new hedges change with the four seasons. Without simHeaven, step 3 is skipped.
@@ -228,9 +229,9 @@ More trees means more GPU work, especially when flying low over large forests. C
 
 | Folder | Content | Download |
 |---|---|---|
-| `Windows/` | `Start_ForestTweak.bat` + `XP12_ForestTweak.ps1` | `XP12_ForestTweak_v1.5.1_Windows.zip` |
-| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.5.1_macOS.zip` |
-| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.5.1_Linux.zip` |
+| `Windows/` | `Start_ForestTweak.bat` + `XP12_ForestTweak.ps1` | `XP12_ForestTweak_v1.5.2_Windows.zip` |
+| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.5.2_macOS.zip` |
+| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.5.2_Linux.zip` |
 | `FlyWithLua/` | `ForestDensityToggle.lua` (in-sim window, all systems) | included in every ZIP |
 | `data/` | `hedgerow_map_*.dat` (official hedge maps) + `DATA_LICENSES.txt` – each map under its own license | included in every ZIP |
 
