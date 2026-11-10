@@ -1,6 +1,6 @@
 <#
   XP12 Forest Tweak  -  Windows
-  Version 1.5.1 (2026-11-08)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.5.2 (2026-11-09)   https://github.com/E11i0t09/xp12-forest-tweak
 
   Denser forests and optionally smaller trees for X-Plane 12 - for vanilla X-Plane,
   simHeaven X-World and Global Forests v2 (one tool for all; if Global Forests v2 is
@@ -50,7 +50,7 @@
 #>
 
 $ErrorActionPreference = 'Stop'
-$Version    = '1.5.1'
+$Version    = '1.5.2'
 $TestedXP   = '12.4'          # X-Plane version the tool was tested with
 $Repo       = 'E11i0t09/xp12-forest-tweak'
 $Threshold  = 3.1             # files with a smaller tree spacing are grass/shrubs/hedges -> kept
@@ -102,6 +102,9 @@ function TLog([string]$msg) {
 #  - ScaleMeshes: multiplies x/y/z of the VERTEX lines of the given 3D meshes, everything else byte for byte
 #  - Gzip / Gunzip: compressed backup of the original file before its 3D meshes are changed
 #  - Sha256 / Sha256Gz: checksum of the original file, checked before a restore
+# PowerShell compiles this C# into a temporary .NET file in the Temp folder at every start. Some antivirus
+# programs flag such files (false positive) - then a clear message is shown instead of a cryptic error.
+try {
 if (-not ('FdtMesh14' -as [type])) {
 Add-Type -TypeDefinition @"
 using System; using System.IO; using System.IO.Compression; using System.Collections.Generic; using System.Globalization; using System.Text; using System.Security.Cryptography;
@@ -444,6 +447,8 @@ public static class FdtHedgeMap {
     static readonly string[] FreeHedges = { "simheaven/forests/hedge.for" };
     static readonly string[] Rows = { "simheaven/forests/random_tree.for" };
     public static byte[] BuildTile(int s, int w, string kind, string p1, string p2, bool knick, string agent, string vHedge, string vRow) {
+        // PowerShell passes a missing path as an empty string, not as null: treat both as none
+        if (string.IsNullOrEmpty(kind)) kind = null; if (string.IsNullOrEmpty(p1)) p1 = null; if (string.IsNullOrEmpty(p2)) p2 = null;
         Geo g = new Geo(s, w); Lcg rng = new Lcg(s * 1000 + w);
         List<Feat> feats = new List<Feat>(); int nMap = 0;
         List<Rec> recs; if (!Data.TryGetValue(TileKey(s, w), out recs)) recs = new List<Rec>();
@@ -567,6 +572,17 @@ public static class FdtHedgeMap {
     }
 }
 "@
+}
+} catch {
+    Write-Host ''
+    Write-Host '  ERROR: Windows could not prepare the fast part of the tool (C# code compiled by PowerShell).' -ForegroundColor Red
+    Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host ''
+    Write-Host '  If your antivirus reported a file in your Temp folder: that is a false positive. PowerShell' -ForegroundColor Yellow
+    Write-Host '  compiles the C# part of XP12_ForestTweak.ps1 (readable in the script) into a temporary .NET' -ForegroundColor Yellow
+    Write-Host '  file at every start. Allow it, or pause the antivirus while the tool runs.' -ForegroundColor Yellow
+    Write-Host '  Details: README, section "Antivirus warning (Windows)".' -ForegroundColor Yellow
+    exit 1
 }
 
 # ---------------------------------------------------------------- input
@@ -792,8 +808,35 @@ function Read-For($path, [switch]$Quick) {
     }
 }
 
+function Get-RealDir($p) {
+    # follows a link (junction or symbolic link) of the folder itself, e.g. Custom Scenery on another drive
+    try {
+        $i = Get-Item -LiteralPath $p -Force
+        for ($n = 0; $n -lt 8 -and $i.LinkType -and $i.Target; $n++) {
+            $t = @($i.Target)[0]
+            if (-not [IO.Path]::IsPathRooted($t)) { $t = Join-Path (Split-Path -Parent $i.FullName) $t }
+            $i = Get-Item -LiteralPath $t -Force
+        }
+        return $i.FullName
+    } catch { return $p }
+}
+function Test-DiskOk($xp, [long]$needXp, [long]$needCs) {
+    # enough free space (plus 1 GB reserve) for $needXp bytes in the X-Plane folder and $needCs bytes in
+    # Custom Scenery, which may be a link to another drive; shows a message and returns $false if not
+    $cs = Get-RealDir (Join-Path $xp 'Custom Scenery')
+    $same = [IO.Path]::GetPathRoot($cs) -eq [IO.Path]::GetPathRoot((Get-RealDir $xp))
+    $checks = @(,@($xp, ($needXp + $needCs)))      # (no 'if' expression here: it would unroll the inner arrays)
+    if (-not $same) { $checks = @(@($xp, $needXp), @($cs, $needCs)) }
+    foreach ($c in $checks) {
+        if ($c[1] -and (Get-Free $c[0]) -lt $c[1] + 1GB) {
+            Write-Host ("  Not enough free disk space on {0}: needs about {1:N1} GB plus 1 GB reserve, free {2:N1} GB." -f $c[0], ($c[1] / 1GB), ((Get-Free $c[0]) / 1GB)) -ForegroundColor Red
+            return $false
+        }
+    }
+    return $true
+}
 function Get-Free($path) {
-    try { (New-Object IO.DriveInfo ([IO.Path]::GetPathRoot((Resolve-Path -LiteralPath $path).ProviderPath))).AvailableFreeSpace } catch { [long]::MaxValue }
+    try { (New-Object IO.DriveInfo ([IO.Path]::GetPathRoot((Get-RealDir (Resolve-Path -LiteralPath $path).ProviderPath)))).AvailableFreeSpace } catch { [long]::MaxValue }
 }
 
 function Write-Bytes($path, [byte[]]$out) {
@@ -1442,19 +1485,50 @@ function Get-HmDataTiles {
 }
 
 # ---- simHeaven on this computer
+function Get-IniPacks($xp, $lines) {
+    # scenery_packs.ini lines -> objects On / Full / Name; packs may be listed as 'Custom Scenery/...' or
+    # with an absolute path (e.g. on another drive)
+    $out = @()
+    foreach ($l in $lines) {
+        if ($l -notmatch '(?i)^SCENERY_PACK(_DISABLED)?\s+(.+?)\s*$') { continue }
+        $on = -not $Matches[1]; $p = $Matches[2].TrimEnd('/', '\')
+        $full = if ([IO.Path]::IsPathRooted($p)) { $p } else { Join-Path $xp $p }
+        $out += [pscustomobject]@{ On = $on; Full = $full; Name = @($p -split '[/\\]')[-1] }
+    }
+    return ,$out
+}
 function Get-HmSources($xp) {
     # enabled simHeaven packs with hedges, in scenery_packs.ini order
     $ini = Read-Ini $xp
     $out = @()
     if (-not $ini) { return ,$out }
-    foreach ($l in $ini.Lines) {
-        if ($l -match '(?i)^SCENERY_PACK\s+Custom Scenery/(simHeaven_X-WORLD-Pro_(.+?)-06-extras1)/?\s*$') {
-            $n = $Matches[1]; $r = $Matches[2]
-            $out += [pscustomobject]@{ Kind = 'pro'; D = (Join-Path $xp "Custom Scenery/$n"); D2 = (Join-Path $xp ("Custom Scenery/" + $n.Substring(0, $n.Length - 10) + '07-extras2')); Region = $r }
-        } elseif ($l -match '(?i)^SCENERY_PACK\s+Custom Scenery/(simHeaven_X-World_(.+?)-4-extras)/?\s*$') {
-            $n = $Matches[1]; $r = $Matches[2]
-            $out += [pscustomobject]@{ Kind = 'free'; D = (Join-Path $xp "Custom Scenery/$n"); D2 = (Join-Path $xp "Custom Scenery/$n"); Region = $r }
+    $packs = Get-IniPacks $xp $ini.Lines
+    $byName = @{}; foreach ($k in $packs) { $byName[$k.Name.ToLower()] = $k.Full }
+    foreach ($k in $packs) {
+        if (-not $k.On) { continue }
+        if ($k.Name -match '(?i)^simHeaven_X-WORLD-Pro_(.+?)-06-extras1$') {
+            $r = $Matches[1]; $n2 = $k.Name.Substring(0, $k.Name.Length - 10) + '07-extras2'
+            $d2 = if ($byName.ContainsKey($n2.ToLower())) { $byName[$n2.ToLower()] } else { Join-Path (Split-Path -Parent $k.Full) $n2 }
+            $out += [pscustomobject]@{ Kind = 'pro'; D = $k.Full; D2 = $d2; Region = $r }
+        } elseif ($k.Name -match '(?i)^simHeaven_X-World_(.+?)-4-extras$') {
+            $out += [pscustomobject]@{ Kind = 'free'; D = $k.Full; D2 = $k.Full; Region = $Matches[1] }
         }
+    }
+    return ,$out
+}
+function Get-HmCountTiles($d) {
+    $base = Join-Path $d 'Earth nav data'
+    if (-not (Test-Path -LiteralPath $base)) { return 0 }
+    return @(Get-ChildItem -LiteralPath $base -Recurse -File -Filter '*.dsf').Count
+}
+function Get-HmSourceReport($xp) {
+    # one line per simHeaven pack the hedges are read from (for Status and tool.log)
+    $out = @()
+    foreach ($src in (Get-HmSources $xp)) {
+        $name = if ($src.Kind -eq 'pro') { 'X-WORLD Pro' } else { 'X-World free' }
+        $l = "$name $($src.Region): $($src.D) ($(Get-HmCountTiles $src.D) tiles)"
+        if ($src.Kind -eq 'pro' -and -not (Test-Path -LiteralPath $src.D2)) { $l += ', tree rows pack not found' }
+        $out += $l
     }
     return ,$out
 }
@@ -1511,12 +1585,13 @@ function Get-HmInfo($xp) {
     if (-not (Test-Path -LiteralPath $m)) { return $null }
     $text = [IO.File]::ReadAllText($m, $Latin1)
     if (-not $text.StartsWith($KnickMark)) { return $null }
-    $o = [pscustomobject]@{ Choice = 'Knicks'; Countries = @(); Tiles = @{}; Version = '' }
+    $o = [pscustomobject]@{ Choice = 'Knicks'; Countries = @(); Tiles = @{}; Version = ''; Incomplete = $false }
     foreach ($l in ($text -split "`r?`n")) {
         $tok = @($l.Split(' ', [StringSplitOptions]::RemoveEmptyEntries))
         if ($l.StartsWith($KnickMark) -and $tok.Count -gt 6) { $o.Version = $tok[6] }
         elseif ($tok.Count -gt 1 -and $tok[0] -eq 'choice') { $o.Choice = $tok[1] }
         elseif ($tok.Count -ge 1 -and $tok[0] -eq 'countries') { $o.Countries = @($tok | Select-Object -Skip 1) }
+        elseif ($tok.Count -ge 1 -and $tok[0] -eq 'incomplete') { $o.Incomplete = $true }
         elseif ($tok.Count -ge 3 -and $tok[0] -eq 'tile') { $o.Tiles[(TK ([int]$tok[1]) ([int]$tok[2]))] = $(if ($tok.Count -gt 3) { $tok[3] } else { '' }) }
     }
     return $o
@@ -1532,8 +1607,19 @@ function Get-HmWant($xp, [string]$choice, $countries) {
     return ,$want
 }
 
-function Build-HedgeOverlay($xp, [string]$choice, $countries, $only) {
-    # builds the hedge overlay; $only: tiles to rebuild ($null = all). Returns the set of built tiles.
+function Write-HmInfo($d, [string]$choice, $countries, $tiles, $sigs, [bool]$done) {
+    # hedgerow_map.txt: settings and built tiles. While building it is marked incomplete and lists only the
+    # tiles finished so far, so an interrupted build goes on where it stopped.
+    $info = @("$KnickMark $Version - do not edit", "choice $choice", ('countries ' + ($countries -join ' ')))
+    if (-not $done) { $info += 'incomplete' }
+    foreach ($t in $tiles) { if ($done -or $sigs.ContainsKey($t)) { $sw = Split-TK $t; $info += "tile $($sw[0]) $($sw[1]) $($sigs[$t])" } }
+    Write-Bytes (Join-Path $d 'hedgerow_map.txt') ([Text.Encoding]::ASCII.GetBytes(($info -join "`r`n") + "`r`n"))
+}
+
+function Build-HedgeOverlay($xp, [string]$choice, $countries, $only, $lib) {
+    # builds the hedge overlay; $only: tiles to rebuild ($null = all; tiles not built yet are always built).
+    # $lib = @(height, profile): the tweak library is written before the tiles, so X-Plane always finds the
+    # hedge types, even if the build is interrupted. Returns the set of built tiles.
     $t0 = [DateTime]::Now
     $d = Get-ShPack $xp
     if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d | Out-Null }
@@ -1541,6 +1627,7 @@ function Build-HedgeOverlay($xp, [string]$choice, $countries, $only) {
     Read-HmData
     $srcs = Get-HmSources $xp
     $tiles = Sort-Tiles (Get-HmWant $xp $choice $countries)
+    $tset = New-Object 'System.Collections.Generic.HashSet[string]'; foreach ($t in $tiles) { [void]$tset.Add($t) }
     $info0 = Get-HmInfo $xp
     $old = @{}
     if ($info0 -and $info0.Version -eq $Version -and $info0.Choice -eq $choice) { $old = $info0.Tiles }
@@ -1548,25 +1635,39 @@ function Build-HedgeOverlay($xp, [string]$choice, $countries, $only) {
     $keep = @{}; foreach ($t in $tiles) { $sw = Split-TK $t; $keep[(Split-Path -Leaf (Get-ShTileRel $sw[0] $sw[1]))] = $true }
     $end = Join-Path $d 'Earth nav data'
     if (Test-Path -LiteralPath $end) { foreach ($f in @(Get-ChildItem -LiteralPath $end -Recurse -File -Filter '*.dsf')) { if (-not $keep.ContainsKey($f.Name)) { Remove-Item -LiteralPath $f.FullName } } }
-    $sigs = @{}; foreach ($k in $old.Keys) { if ($tiles -contains $k) { $sigs[$k] = $old[$k] } }
     $todo = @($tiles | Where-Object { $null -eq $only -or $only.Contains($_) -or -not $old.ContainsKey($_) })
+    $sigs = @{}; foreach ($k in $old.Keys) { if ($tset.Contains($k)) { $sigs[$k] = $old[$k] } }
+    foreach ($t in $todo) { $sigs.Remove($t) }
+    Write-HmInfo $d $choice $countries $tiles $sigs $false
+    if ($lib) { Write-Knicks $xp $lib[0] $lib[1] $tset $choice }
+    [void](Set-ShIniPlace $xp)
     $total = 0; $kept = 0
     $agent = "XP12 Forest Tweak $Version (hedge overlay, see ATTRIBUTION.txt)"
-    $p = New-Prog 'Hedge tiles' $todo.Count; $i = 0
-    foreach ($t in $todo) {
-        $i++; Step-Prog $p $i $i $todo.Count
-        $sw = Split-TK $t; $s = $sw[0]; $w = $sw[1]
-        $knick = $choice -eq 'Knicks' -and $KnickTiles.Contains($t)
-        $src = Get-HmTileSource $srcs $s $w
-        $bytes = [FdtHedgeMap]::BuildTile($s, $w, $src.Kind, $src.P1, $src.P2, $knick, $agent, $(if ($knick) { $ShVKnick } else { $HmVHedge }), $ShVRow)
-        $path = Join-Path $d ('Earth nav data/' + (Get-ShTileRel $s $w))
-        $pd = Split-Path -Parent $path
-        if (-not (Test-Path -LiteralPath $pd)) { New-Item -ItemType Directory -Path $pd | Out-Null }
-        Write-Bytes $path $bytes
-        $sigs[$t] = Get-SrcSig $src
-        $total += [FdtHedgeMap]::LastMap; $kept += [FdtHedgeMap]::LastKept
+    $p = New-Prog 'Hedge tiles' $todo.Count; $i = 0; $last = [DateTime]::Now; $finished = $false
+    try {
+        foreach ($t in $todo) {
+            $i++; Step-Prog $p $i $i $todo.Count
+            $sw = Split-TK $t; $s = $sw[0]; $w = $sw[1]
+            $knick = $choice -eq 'Knicks' -and $KnickTiles.Contains($t)
+            $src = Get-HmTileSource $srcs $s $w
+            $bytes = [FdtHedgeMap]::BuildTile($s, $w, $src.Kind, $src.P1, $src.P2, $knick, $agent, $(if ($knick) { $ShVKnick } else { $HmVHedge }), $ShVRow)
+            $path = Join-Path $d ('Earth nav data/' + (Get-ShTileRel $s $w))
+            $pd = Split-Path -Parent $path
+            if (-not (Test-Path -LiteralPath $pd)) { New-Item -ItemType Directory -Path $pd | Out-Null }
+            Write-Bytes $path $bytes
+            $sigs[$t] = Get-SrcSig $src
+            $total += [FdtHedgeMap]::LastMap; $kept += [FdtHedgeMap]::LastKept
+            if (([DateTime]::Now - $last).TotalSeconds -gt 10) { Write-HmInfo $d $choice $countries $tiles $sigs $false; $last = [DateTime]::Now }
+        }
+        $finished = $true
+    } finally {
+        End-Prog $p
+        if (-not $finished) {
+            # stopped (Ctrl+C or an error): keep the progress, the next run goes on from here
+            Write-HmInfo $d $choice $countries $tiles $sigs $false
+            TLog "hedge overlay: stopped after $($sigs.Count) of $($tiles.Count) tiles"
+        }
     }
-    End-Prog $p
     if (Test-Path -LiteralPath $end) { foreach ($sub in @(Get-ChildItem -LiteralPath $end -Directory)) { if (@(Get-ChildItem -LiteralPath $sub.FullName -Force).Count -eq 0) { Remove-Item -LiteralPath $sub.FullName } } }
     $att = @('XP12 Forest Tweak - hedge overlay (made on this computer)', '',
              'Hedges, hedgebanks (Knicks), tree rows and copses from official maps (changed: only outlines and type',
@@ -1578,15 +1679,41 @@ function Build-HedgeOverlay($xp, [string]$choice, $countries, $only) {
               'Made for use on this computer only - do not share this folder.', '',
               'Restore original in XP12 Forest Tweak removes this folder.')
     Write-Bytes (Join-Path $d 'ATTRIBUTION.txt') ([Text.Encoding]::ASCII.GetBytes(($att -join "`r`n") + "`r`n"))
-    $info = @("$KnickMark $Version - do not edit", "choice $choice", ('countries ' + ($countries -join ' ')))
-    foreach ($t in $tiles) { $sw = Split-TK $t; $info += "tile $($sw[0]) $($sw[1]) $($sigs[$t])" }
-    Write-Bytes (Join-Path $d 'hedgerow_map.txt') ([Text.Encoding]::ASCII.GetBytes(($info -join "`r`n") + "`r`n"))
+    Write-HmInfo $d $choice $countries $tiles $sigs $true
     [void](Set-ShIniPlace $xp)
     $took = Took $t0
     TLog "hedge overlay: $($todo.Count) of $($tiles.Count) tiles built, $total map features, $kept simHeaven features ($took)"
     Write-Host "  Hedge overlay: $($tiles.Count) tiles, $total features from the hedge maps ($took)" -ForegroundColor Green
     $set = New-Object 'System.Collections.Generic.HashSet[string]'; foreach ($t in $tiles) { [void]$set.Add($t) }
     return ,$set
+}
+
+function Invoke-StartOffers($xp, $targets, $st) {
+    # after an update: offers to put the tweak back at once (same settings), instead of only a hint
+    if ((Test-SwitchedOff $xp) -or (Test-XPRunning)) { return }
+    if ($st.N -and $st.NReset) {
+        Write-Host ''
+        if (Ask-Yes "  An update reset $($st.NReset) forest files. Tweak them again now (same settings)? [Y/n]") {
+            [void](Invoke-ApplyValues $xp $targets $st.X $st.H $st.HP)
+            $script:StCache = $null
+        }
+    }
+    if (Get-HedgeHint $xp) {
+        Write-Host ''
+        if (Ask-Yes '  Bring the hedges up to date now? [Y/n]') { Repair-Hedges $xp; Write-Host '  Hedges are up to date.' -ForegroundColor Green }
+    }
+}
+
+function Get-HedgeHint($xp) {
+    # short note when the hedge overlay needs Check & repair (interrupted build, simHeaven changed), else ''
+    if (-not (Get-KnickInfo $xp).On) { return '' }
+    $info = Get-HmInfo $xp
+    if (-not $info) { return '' }
+    if ($info.Version -ne $Version) { return 'built with an older version - run Check & repair [4] to update them' }
+    if ($info.Incomplete) { return 'building was interrupted - run Check & repair [4] to finish it' }
+    $ch = Get-HmChanged $xp
+    if ($ch.Count) { return "simHeaven changed since they were built ($($ch.Count) tiles) - run Check & repair [4]" }
+    return ''
 }
 
 function Get-HmChanged($xp) {
@@ -1660,7 +1787,7 @@ function Set-PackPlace($xp, [string]$folder, [string]$rx, [string]$fallbackFolde
 # the tweak library directly above the simHeaven libraries (free Vegetation Library or X-WORLD Pro Library)
 function Set-KnickIniPlace($xp) { Set-PackPlace $xp $KnickDir '(?i)simheaven.*(vegetation.*librar|X-WORLD-Pro_Library)' $null }
 # the hedge overlay above all simHeaven packs: their forest exclusions would hide it otherwise
-function Set-ShIniPlace($xp) { Set-PackPlace $xp $ShDir '(?i)^SCENERY_PACK(_DISABLED)?\s+Custom Scenery/simHeaven_X-World(_|-Pro_(?!Library|Add-ons))' $KnickDir }
+function Set-ShIniPlace($xp) { Set-PackPlace $xp $ShDir '(?i)^SCENERY_PACK(_DISABLED)?\s+(.*[/\\])?simHeaven_X-World(_|-Pro_(?!Library|Add-ons))' $KnickDir }
 
 function Remove-KnickIni($xp) {
     $ini = Read-Ini $xp
@@ -1874,17 +2001,25 @@ function Read-Hedges([string]$current) {
     }
 }
 
-function Read-Countries($xp, $current) {
+function Get-ProCountries($xp) {
+    # @(key, name, tiles) of the countries with X-WORLD Pro tiles on this computer
     $pro = Get-HmProTiles $xp
     $opts = @()
     foreach ($c in $CountryTable) { $t = Get-CountryTiles $c[0]; $t.IntersectWith($pro); if ($t.Count) { $opts += ,@($c[0], $c[1], $t.Count) } }
+    return ,$opts
+}
+
+function Read-Countries($xp, $current) {
+    $pro = Get-HmProTiles $xp
+    $opts = Get-ProCountries $xp
     Write-Host ''
-    Write-Host '  Countries - X-WORLD Pro hedges are rebuilt here (Knick areas always, about 2 s per tile):'
+    Write-Host '  Countries - X-WORLD Pro hedges are rebuilt here (Knick areas always):'
     Write-Host ''
     for ($i = 0; $i -lt $opts.Count; $i++) { Write-Host ('    [{0}] {1,-12} {2,4} tiles' -f ($i + 1), $opts[$i][1], $opts[$i][2]) }
     Write-Host ('    [A] all X-WORLD Pro tiles on this computer  {0,4} tiles' -f $pro.Count)
     Write-Host ''
-    $cur = if ($current -and @($current).Count) { @($current) } else { @('de', 'dk') }
+    $cur = @($opts | ForEach-Object { $_[0] })      # first time: all countries with Pro tiles
+    if ($current -and @($current).Count) { $cur = @($current) }
     if ($cur -contains 'all') { $hint = 'A' }
     else {
         $hint = (@(for ($i = 0; $i -lt $opts.Count; $i++) { if ($cur -contains $opts[$i][0]) { "$($i + 1)" } }) -join ',')
@@ -1914,7 +2049,7 @@ function Confirm-FreeOff($xp, $det) {
     $ini = Read-Ini $xp
     $low = @($det.Both | ForEach-Object { $_.ToLower() })
     $new = @(foreach ($l in $ini.Lines) {
-        if ($l -match '(?i)^SCENERY_PACK\s+(Custom Scenery/simHeaven_X-World_(.+?)-\d-[^/]+/?)\s*$' -and $low -contains $Matches[2].ToLower()) { "SCENERY_PACK_DISABLED $($Matches[1])" } else { $l }
+        if ($l -match '(?i)^SCENERY_PACK\s+((?:.*[/\\])?simHeaven_X-World_(.+?)-\d-[^/\\]+[/\\]?)\s*$' -and $low -contains $Matches[2].ToLower()) { "SCENERY_PACK_DISABLED $($Matches[1])" } else { $l }
     })
     Write-Ini $xp $new $ini.NL
     TLog "free X-World turned off for $regions"
@@ -1922,7 +2057,9 @@ function Confirm-FreeOff($xp, $det) {
     return (Get-HmDetect $xp)
 }
 
-function Invoke-ChooseSettings($xp, $targets) {
+function Invoke-ChooseSettings($xp, $targets, [switch]$Quick) {
+    # -Quick: recommended settings without the three steps (tree spacing 0.7, height 0.7, hedgebanks, with
+    # X-WORLD Pro all countries that have Pro tiles); the summary is still shown for confirmation
     if (Test-Blocked) { return }
     $wasOff = Test-SwitchedOff $xp
     Confirm-TweakActive $xp $targets
@@ -1938,22 +2075,32 @@ function Invoke-ChooseSettings($xp, $targets) {
     $info = Get-HmInfo $xp
     $curC = @(); if ($info) { $curC = @($info.Countries) }
     $hasGf = @($targets | Where-Object { (Rel $xp $_) -match '^Custom Scenery' }).Count -gt 0
-    Write-Host ''
-    Write-Host '  Nothing is changed until you confirm at the end.'
-    Write-Host ''
-    Write-Host ''
-    $fac = Read-Spacing $st.X $tweaked
-    Write-Host ''
-    Write-Host ''
-    $hf = Read-Height $st.H $tweaked
-    $hp = if ($hf -lt 1.0) { 'realistic' } else { 'uniform' }
-    Write-Host ''
-    Write-Host ''
     $want = $hchoice; $wantC = $curC
-    if ($hasSh) {
-        $want = Read-Hedges $hchoice
-        if ($det.Pro.Count -and $want -ne 'default') { $wantC = @(Read-Countries $xp $curC) }
-    } else { Write-Host '  Step 3/3  Hedges   skipped - simHeaven X-World not installed' }
+    if ($Quick) {
+        Write-Host ''
+        Write-Host ('  Recommended setup: tree spacing 0.7, tree height 0.7 (realistic)' + $(if ($hasSh) { ', hedgebanks (Knicks)' } else { '' }))
+        $fac = $DefaultFac; $hf = $DefaultHeight
+        if ($hasSh) {
+            $want = 'Knicks'
+            if ($det.Pro.Count) { $wantC = @(Get-ProCountries $xp | ForEach-Object { $_[0] }) }
+        }
+    } else {
+        Write-Host ''
+        Write-Host '  Nothing is changed until you confirm at the end.'
+        Write-Host ''
+        Write-Host ''
+        $fac = Read-Spacing $st.X $tweaked
+        Write-Host ''
+        Write-Host ''
+        $hf = Read-Height $st.H $tweaked
+        Write-Host ''
+        Write-Host ''
+        if ($hasSh) {
+            $want = Read-Hedges $hchoice
+            if ($det.Pro.Count -and $want -ne 'default') { $wantC = @(Read-Countries $xp $curC) }
+        } else { Write-Host '  Step 3/3  Hedges   skipped - simHeaven X-World not installed' }
+    }
+    $hp = if ($hf -lt 1.0) { 'realistic' } else { 'uniform' }
     # summary
     $same = (($fac -eq $st.X) -and ($hf -eq $st.H) -and ($hp -eq $st.HP)) -or (($fac -eq 1.0) -and ($hf -eq 1.0) -and ($st.X -eq 1.0) -and ($st.H -eq 1.0))
     $rebuild = $tweaked -and ((-not $same) -or $st.NOld -gt 0)       # restore first, then apply the new values
@@ -1974,6 +2121,7 @@ function Invoke-ChooseSettings($xp, $targets) {
     $overlayChange = $overlayOn -and ((-not $info) -or $info.Version -ne $Version -or $info.Choice -ne $want -or ((@($info.Countries | Sort-Object) -join ' ') -ne (@($wantC | Sort-Object) -join ' ')) -or $changed.Count -gt 0 -or $planDiff)
     $libChange = $overlayOn -and ((-not $ki.On) -or $ki.H -ne $hf -or $ki.HP -ne $hp -or (Get-KnickLibVersion $xp) -ne $Version -or $hchoice -ne $want -or $overlayChange)
     $hedgeChange = $hasSh -and ($want -ne $hchoice -or $overlayChange -or $libChange)
+    $hedgeNeed = [long]0
     Write-Host ''
     Write-Host ''
     Write-Host '  Summary'
@@ -2000,19 +2148,28 @@ function Invoke-ChooseSettings($xp, $targets) {
         $plan = Get-HmWant $xp $want $wantC
         if ((-not $info) -or $info.Version -ne $Version -or $info.Choice -ne $want) { $nNew = $plan.Count }
         else { $nNew = @($plan | Where-Object { -not $info.Tiles.ContainsKey($_) -or $changed.Contains($_) }).Count }
-        Write-Host ('    {0,6} hedge tiles       {1} to build, about {2} min' -f $plan.Count, $nNew, [Math]::Max(1, [int][Math]::Floor($nNew * 2 / 60)))
+        # rough values measured on X-WORLD Pro Europe: tiles with official map data about 1.1 s and 2.7 MB,
+        # other tiles about 0.3 s and 1.3 MB (Windows)
+        $dataT = Get-HmDataTiles
+        $newT = @($plan | Where-Object { $nNew -eq $plan.Count -or -not $info.Tiles.ContainsKey($_) -or $changed.Contains($_) })
+        $nD = @($newT | Where-Object { $dataT.Contains($_) }).Count; $nP = $newT.Count - $nD
+        $hedgeNeed = [long](($nD * 2.7 + $nP * 1.3) * 1MB)
+        $sec = $nD * 1.1 + $nP * 0.3
+        $size = if ($hedgeNeed -ge 1GB) { '{0:N1} GB' -f ($hedgeNeed / 1GB) } else { '{0:N0} MB' -f [Math]::Max(1, $hedgeNeed / 1MB) }
+        if ($nNew) { Write-Host ('    {0,6} hedge tiles       {1} to build, {2}, up to about {3}' -f $plan.Count, $nNew, (Format-TimeRange $sec), $size) }
+        else { Write-Host ('    {0,6} hedge tiles       up to date' -f $plan.Count) }
         Write-Host '         1 tweak library     hedge types for all four seasons'
     }
     if ($hedgeChange -and $ho.Files.Count -and (($want -ne 'default') -ne ($ho.Overall -eq 'enhanced'))) { Write-Host ('    {0,6} free X-World hedge files' -f $ho.Files.Count) }
     if ($hedgeChange -and -not $overlayOn -and ($ki.On -or (Test-ShInfo $xp))) { Write-Host '         2 tweak folders     removed' }
     if (-not $forestChange -and -not $hedgeChange) { Write-Host '    nothing'; return }
+    $need = 0
     if ($forestChange -and $hf -lt 1.0) {
         $need = [long]((Get-Files $targets | Measure-Object Length -Sum).Sum * 0.35)
-        $free = Get-Free $xp
         Write-Host ''
-        Write-Host ("  Disk: about {0:N1} GB backups of the 3D tree models (free: {1:N1} GB)" -f ($need / 1GB), ($free / 1GB))
-        if ($free -lt $need + 1GB) { Write-Host '  Not enough free disk space.' -ForegroundColor Red; return }
+        Write-Host ("  Disk: about {0:N1} GB backups of the 3D tree models (free: {1:N1} GB)" -f ($need / 1GB), ((Get-Free $xp) / 1GB))
     }
+    if (-not (Test-DiskOk $xp $need $hedgeNeed)) { return }
     if ($forestChange) {
         Write-Host "  Time: $(Format-TimeRange (Get-Estimate $st $hf $rebuild)) for the forests (depends on your computer)"
         if ($hasGf -and $fac -lt 1.0) { Write-Host "  Global Forests v2: cropland extra x$(Fmt $CropFac), sparse forests extra x$(Fmt $SparseFac['25']) / x$(Fmt $SparseFac['50'])" }
@@ -2039,7 +2196,7 @@ function Invoke-ChooseSettings($xp, $targets) {
             if ($overlayChange) {
                 $only = $null      # $null = build all tiles (a HashSet must not go through 'if' output, it would be unrolled)
                 if ($info -and $info.Version -eq $Version -and $info.Choice -eq $want) { $only = $changed }
-                $built = Build-HedgeOverlay $xp $want $wantC $only
+                $built = Build-HedgeOverlay $xp $want $wantC $only @($hf, $hp)
             } else {
                 $built = New-Object 'System.Collections.Generic.HashSet[string]'; foreach ($k in $info.Tiles.Keys) { [void]$built.Add($k) }
             }
@@ -2234,6 +2391,7 @@ function Show-Status($xp, $targets) {
     if ($det.Pro.Count) { $dl += "X-WORLD Pro ($($det.Pro -join ', '))" }
     if ($det.Free.Count) { $dl += "X-World free ($($det.Free -join ', '))" }
     Write-Host ('  simHeaven            : ' + $(if ($dl.Count) { $dl -join ', ' } else { 'not found' }))
+    foreach ($l in (Get-HmSourceReport $xp)) { Write-Host "                         $l" }
     if ($det.Both.Count) { Warn "  Free X-World and X-WORLD Pro are both on for $($det.Both -join ', ') - Choose settings can turn the free packs off" }
     if ((Get-KnickInfo $xp).On) {
         Write-Host "  Hedges               : $($ChoiceNames[(Get-HedgeChoice $xp $ho.Overall)])"
@@ -2243,6 +2401,8 @@ function Show-Status($xp, $targets) {
             Write-Host ("  Hedge overlay        : $($info.Tiles.Count) tiles (Custom Scenery/$ShDir)" + $(if ($names) { ", X-WORLD Pro: $names" } else { '' }))
             Write-Host '                         official hedge maps: see DATA_LICENSES.txt'
         }
+        $hint = Get-HedgeHint $xp
+        if ($hint) { Warn "                         $hint" }
     }
     $other = @(Get-OtherForestAddons $xp)
     if ($other.Count) {
@@ -2254,6 +2414,33 @@ function Show-Status($xp, $targets) {
     Write-Host ''
     Write-Host '  The visible effect is limited by the vegetation slider in X-Plane and by the forest data of'
     Write-Host '  the scenery: where the scenery has no forest areas, no trees are added.'
+}
+
+function Repair-Hedges($xp) {
+    # rebuilds hedge tiles that are missing (interrupted build) or whose simHeaven source changed, rewrites
+    # the tweak library and fixes scenery_packs.ini
+    $ki = Get-KnickInfo $xp
+    if ($ki.On) {
+        # rebuild overlay tiles whose simHeaven source changed, rewrite the tweak library, fix scenery_packs.ini
+        $info = Get-HmInfo $xp
+        $choice = Get-HedgeChoice $xp $null
+        $built = New-Object 'System.Collections.Generic.HashSet[string]'
+        if ($info) {
+            foreach ($t in $info.Tiles.Keys) { [void]$built.Add($t) }
+            $ch = $null
+            if ($info.Version -eq $Version) { $ch = Get-HmChanged $xp }
+            if ($null -eq $ch -or $ch.Count -or $info.Incomplete) {
+                $what = if ($null -eq $ch) { 'all tiles out of date' } elseif ($ch.Count) { "$($ch.Count) tiles out of date" } else { '' }
+                if ($info.Incomplete -and $null -ne $ch) { $what = $(if ($what) { "$what, " } else { '' }) + 'interrupted build' }
+                Write-Host "  Hedge overlay                  : $what - building again"
+                $built = Build-HedgeOverlay $xp $choice $info.Countries $ch @($ki.H, $ki.HP)
+            }
+            [void](Set-ShIniPlace $xp)
+            Write-Host '  Hedge overlay                  : checked, listed above simHeaven'
+        }
+        Write-Knicks $xp $ki.H $ki.HP $built $choice
+        Write-Host '  Tweak library                  : checked, listed above the simHeaven libraries'
+    }
 }
 
 function Invoke-CheckRepair($xp, $targets) {
@@ -2315,26 +2502,7 @@ function Invoke-CheckRepair($xp, $targets) {
     Write-Host "  Unused backups / temp files    : $orphans / $tmp removed"
     Write-Host "  Empty backup folders           : $empty removed"
     if ($sides) { Write-Host "  Quick switch copies            : $sides fixed or removed" }
-    $ki = Get-KnickInfo $xp
-    if ($ki.On) {
-        # rebuild overlay tiles whose simHeaven source changed, rewrite the tweak library, fix scenery_packs.ini
-        $info = Get-HmInfo $xp
-        $choice = Get-HedgeChoice $xp $null
-        $built = New-Object 'System.Collections.Generic.HashSet[string]'
-        if ($info) {
-            foreach ($t in $info.Tiles.Keys) { [void]$built.Add($t) }
-            $ch = $null
-            if ($info.Version -eq $Version) { $ch = Get-HmChanged $xp }
-            if ($null -eq $ch -or $ch.Count) {
-                Write-Host "  Hedge overlay                  : $(if ($null -eq $ch) { 'all' } else { $ch.Count }) tiles out of date - building again"
-                $built = Build-HedgeOverlay $xp $choice $info.Countries $ch
-            }
-            [void](Set-ShIniPlace $xp)
-            Write-Host '  Hedge overlay                  : checked, listed above simHeaven'
-        }
-        Write-Knicks $xp $ki.H $ki.HP $built $choice
-        Write-Host '  Tweak library                  : checked, listed above the simHeaven libraries'
-    }
+    Repair-Hedges $xp
     TLog "check: ok $okGz, reset $reset, gone $gone, orphans $orphans, tmp $tmp, empty dirs $empty, bad $bad ($(Took $t0))"
     if ($bad) {
         Write-Host ''
@@ -2361,6 +2529,7 @@ try {
     TLog "start $Version (Windows, PowerShell $($PSVersionTable.PSVersion)), X-Plane $($ver[1]) at $xp, folders: $((@($targets | ForEach-Object { Rel $xp $_ })) -join ', ')"
     Write-Host "  Folders : $((@($targets | ForEach-Object { Rel $xp $_ })) -join ', ')"
     if (Test-XPRunning) { Warn '  X-Plane is running - please quit it before changing anything.' }
+    foreach ($l in (Get-HmSourceReport $xp)) { TLog "simHeaven: $l" }
     $st = Get-ForestState $xp $targets
     $script:StCache = $st      # reused by Choose settings and Status until a menu action changes files
     $ho = Get-HedgeOverview $xp
@@ -2372,6 +2541,8 @@ try {
         if ($det.Pro.Count) { $dl += "X-WORLD Pro ($($det.Pro -join ', '))" }
         if ($det.Free.Count) { $dl += "X-World free ($($det.Free -join ', '))" }
         if ($dl.Count) { Write-Host "  simHeaven: $($dl -join ', ')" }
+        $hint = Get-HedgeHint $xp
+        if ($hint) { Warn "  Hedges  : $hint" }
     }
     Show-EnvHints $xp $targets $gf $ver[0] $ver[1]
     if ($upd) {
@@ -2381,16 +2552,22 @@ try {
                 $tag = ($upd.Result | ConvertFrom-Json).tag_name
                 if ($tag -and (Get-VTuple $tag) -gt (Get-VTuple $Version)) {
                     Write-Host "  Update  : version $($tag.TrimStart('v', 'V')) is available - github.com/$Repo/releases" -ForegroundColor Cyan
+                    if ((Read-Host '  Open the download page in your browser? [y/N]').Trim() -match '^[yYjJ]') {
+                        try { Start-Process "https://github.com/$Repo/releases/latest" } catch { }
+                    }
                 }
             }
         } catch { }
     }
+    Invoke-StartOffers $xp $targets $st
     while ($true) {
         Write-Host ''
         $sw = if (Test-SwitchedOff $xp) { '[5] Switch back to tweak' } else { '[5] Switch to original' }
-        Write-Host "  [1] Choose settings   [2] Restore original   [3] Status   [4] Check & repair   $sw   [Q] Quit"
+        Write-Host '  [0] Recommended setup   [1] Choose settings   [2] Restore original   [3] Status'
+        Write-Host "  [4] Check & repair   $sw   [Q] Quit"
         $menuKey = (Read-Host '  Choice').Trim()
         switch -Regex ($menuKey) {
+            '^0$'    { Invoke-ChooseSettings $xp $targets -Quick }
             '^1$'    { Invoke-ChooseSettings $xp $targets }
             '^2$'    { Invoke-RestoreAll $xp $targets }
             '^3$'    { Show-Status $xp $targets }
@@ -2398,7 +2575,7 @@ try {
             '^5$'    { Invoke-SwitchMenu $xp $targets }
             '^[qQ]$' { return }
         }
-        if ($menuKey -match '^[1245]$') { $script:StCache = $null }      # files may have changed: read the state again next time
+        if ($menuKey -match '^[01245]$') { $script:StCache = $null }      # files may have changed: read the state again next time
     }
 } catch {
     Write-Host ''
