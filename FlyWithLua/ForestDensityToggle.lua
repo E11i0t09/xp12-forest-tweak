@@ -1,6 +1,6 @@
 --[[
   ForestDensityToggle.lua  -  in-sim window of XP12 Forest Tweak
-  Version 1.5.1 (2026-11-07)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.5.2 (2026-11-10)   https://github.com/E11i0t09/xp12-forest-tweak
   (c) E11i0t09. Free community project, not for sale. License: CC BY-NC-SA 4.0 with additional permission (free use also for companies and flight schools), see the LICENSE file.
 
   In-sim control of the forest density on top of the tweak, without touching
@@ -161,6 +161,37 @@ do
     end
 end
 
+-- ---------------------------------------------------------------- reset by an update?
+-- An X-Plane or Global Forests v2 update puts the original forest files back. Checks up to 150 of the
+-- tweaked files (spread over the whole log, first 4 KB each): reset = original SPACING line, not the tweaked one.
+local reset_files, reset_checked = 0, 0
+local function squeeze(t) return (t:gsub("%s+", " ")) end
+if not switched_off then
+    local entries = {}
+    local f = io.open(LOG_PATH, "r")
+    if f then
+        for line in f:lines() do
+            local fr = line:match('"f"%s*:%s*"(.-)"')
+            local n1 = line:match('"n"%s*:%s*%["(.-)"')
+            local o1 = line:match('"o"%s*:%s*%["(.-)"')
+            if fr and n1 and o1 and n1 ~= o1 then entries[#entries + 1] = { fr, (n1:gsub("\\t", " ")), (o1:gsub("\\t", " ")) } end
+        end
+        f:close()
+    end
+    local stride = math.max(1, math.ceil(#entries / 150))
+    for i = 1, #entries, stride do
+        local e = entries[i]
+        local fr = e[1]:gsub("\\\\", "/"):gsub("/", DIRECTORY_SEPARATOR)
+        local ff = io.open(SYSTEM_DIRECTORY .. fr, "rb")
+        if ff then
+            local head = squeeze(ff:read(4096) or "")
+            ff:close()
+            reset_checked = reset_checked + 1
+            if not head:find(squeeze(e[2]), 1, true) and head:find(squeeze(e[3]), 1, true) then reset_files = reset_files + 1 end
+        end
+    end
+end
+
 -- ---------------------------------------------------------------- settings file
 local cfg = { auto_reload = false, visible = false, l = nil, t = nil, r = nil, b = nil }
 
@@ -274,6 +305,12 @@ if cfg.step and cfg.step >= 1 and cfg.step < NSTEPS and current_step == NSTEPS t
                               xfac(cfg.step), xfac(NSTEPS))
 end
 
+if reset_files > 0 then
+    start_msg = string.format("Forest Tweak: an update reset the forest files (%d of %d checked) - run Choose settings in the tool, X-Plane closed",
+                              reset_files, reset_checked)
+    logMsg("ForestDensityToggle: " .. start_msg)
+end
+
 function fdt_set_dense()    apply_step(NSTEPS) end
 function fdt_set_original() apply_step(1) end
 function fdt_toggle()       if current_step == 1 then apply_step(NSTEPS) else apply_step(1) end end
@@ -355,6 +392,10 @@ function fdt_build(w, x, y)
     else
         kv("Tool setting", string.format("tree spacing %.2f = max %s trees", factor, xfac(NSTEPS))
             .. (factor_source == "backup.log" and "" or "  (" .. factor_source .. ")"))
+        if reset_files > 0 then
+            colored(C_WARN_TXT, string.format("An update reset the forest files (%d of %d checked): forests are original again.", reset_files, reset_checked))
+            colored(C_WARN_TXT, "Run Choose settings in the tweak tool (X-Plane closed) to tweak them again.")
+        end
     end
     if height < 1 then kv("Tree height", string.format("%d %%", math.floor(height * 100 + 0.5)) .. (info.hp == "realistic" and "  (realistic profile)" or ""), C_GREEN_TXT)
     else kv("Tree height", "100 % (original)") end
@@ -487,5 +528,5 @@ end
 
 if cfg.visible then open_window() end
 
-logMsg(string.format("ForestDensityToggle 1.5.1: ready (dense %.2f, original %.2f, factor %.2f, height %.2f, %d files, %d with 3D models scaled)",
+logMsg(string.format("ForestDensityToggle 1.5.2: ready (dense %.2f, original %.2f, factor %.2f, height %.2f, %d files, %d with 3D models scaled)",
        dense_value, orig_value(), factor, height, info.files, info.meshes))
