@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.0
+- **Windows: a window instead of the console.** All settings on one page with a live preview of what will change. The console menu stays (`Start_ForestTweak_Console.bat`).
+- **Windows setup** (`…_Setup.exe`): installs for your user without admin rights, finds X-Plane, optionally the in-sim window. Uninstall offers to restore the original forests first. The ZIP works without installation as before.
+- **Updates from the window:** downloads the new version from GitHub, checks its SHA-256 and installs it.
+- Hedge choices renamed: *Green hedges* and *+ Hedgebanks* (was *Enhanced* / *Hedgebanks*). No earth banks are built: the Knick look is mixed bushes with single tall trees.
+- Fix (Windows): *[0] Recommended setup* with X-WORLD Pro chose only Germany instead of all countries with Pro tiles.
+
 ## 1.5.2
 - **[0] Recommended setup:** one key for good default settings.
 - **After an update** the tool offers to put the tweak back right at the start; the in-sim window warns when forests were reset.

@@ -1,6 +1,6 @@
 <#
   XP12 Forest Tweak  -  Windows
-  Version 1.5.2 (2026-11-09)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.6.0 (2026-11-12)   https://github.com/E11i0t09/xp12-forest-tweak
 
   Denser forests and optionally smaller trees for X-Plane 12 - for vanilla X-Plane,
   simHeaven X-World and Global Forests v2 (one tool for all; if Global Forests v2 is
@@ -27,9 +27,9 @@
   - Every original line is logged in <X-Plane>\ForestDensityTweak\backup.log
     (shared with the macOS/Linux version and all earlier versions), so "Restore original"
     puts back the exact original values and nothing is ever scaled twice.
-  - Optional, with simHeaven X-World (free) or X-WORLD Pro: hedges "original", "enhanced"
-    (green hedges about 4-5 m high, all four seasons) or "hedgebanks (Knicks)" (in northern
-    Germany and Denmark bushes on earth banks with single hedgerow trees, elsewhere enhanced).
+  - Optional, with simHeaven X-World (free) or X-WORLD Pro: hedges "original", "green hedges"
+    (green hedges about 4-5 m high, all four seasons) or "green hedges + hedgebanks (Knicks)" (in northern
+    Germany and Denmark the Knick look: mixed bushes with single tall trees, elsewhere green hedges).
     Free X-World: the hedge files of its Vegetation Library are changed (originals logged in
     ForestDensityTweak\hedges.log). X-WORLD Pro draws hedges as walls, which can not be changed
     through a library, so the tool rebuilds them as hedges in the countries you choose.
@@ -50,7 +50,7 @@
 #>
 
 $ErrorActionPreference = 'Stop'
-$Version    = '1.5.2'
+$Version    = '1.6.0'
 $TestedXP   = '12.4'          # X-Plane version the tool was tested with
 $Repo       = 'E11i0t09/xp12-forest-tweak'
 $Threshold  = 3.1             # files with a smaller tree spacing are grass/shrubs/hedges -> kept
@@ -582,6 +582,7 @@ public static class FdtHedgeMap {
     Write-Host '  compiles the C# part of XP12_ForestTweak.ps1 (readable in the script) into a temporary .NET' -ForegroundColor Yellow
     Write-Host '  file at every start. Allow it, or pause the antivirus while the tool runs.' -ForegroundColor Yellow
     Write-Host '  Details: README, section "Antivirus warning (Windows)".' -ForegroundColor Yellow
+    if ($FdtLib) { throw "Windows could not prepare the fast part of the tool: $($_.Exception.Message)" }
     exit 1
 }
 
@@ -647,11 +648,12 @@ function Find-GFv2($xp) {
       Where-Object { $_.Name -match '^Global[ _-]?Forests' -and $_.Name -match 'v2' } | ForEach-Object { $_.FullName })
 }
 
-function Get-Targets($xp, $gf) {
+function Get-Targets($xp, $gf, $Include = $null) {
+    # $Include: $true / $false from the window, $null = ask (console)
     $def = Join-Path $xp 'Resources/default scenery/1200 forests'
     if (-not (Test-Path -LiteralPath $def)) { throw "Default forest folder not found: $def" }
     $t = @((Get-Item -LiteralPath $def).FullName)
-    if ($gf.Count -and (Ask-Yes '  Global Forests v2 found. Tweak it too? [Y/n]')) { $t += $gf }
+    if ($gf.Count -and $(if ($null -ne $Include) { [bool]$Include } else { Ask-Yes '  Global Forests v2 found. Tweak it too? [Y/n]' })) { $t += $gf }
     return $t
 }
 
@@ -1295,7 +1297,7 @@ function Get-HedgeOverview($xp) {
 
 function Get-HedgeStatusText($o) {
     if (-not $o.Files.Count) { return 'not installed' }
-    switch ($o.Overall) { 'enhanced' { 'enhanced (about 4-5 m, visible up to 8 km)' } 'default' { 'default (2.2-2.8 m, visible up to 4 km)' } default { $o.Overall } }
+    switch ($o.Overall) { 'enhanced' { 'green hedges (about 4-5 m, visible up to 8 km)' } 'default' { 'default (2.2-2.8 m, visible up to 4 km)' } default { $o.Overall } }
 }
 
 function Apply-Hedges($xp, $o) {
@@ -1435,7 +1437,7 @@ $CountryTable = @(@('de', 'Germany', @{ 47 = @(7, 13); 48 = @(7, 13); 49 = @(6, 
                @('bnl', 'Benelux', @{ 49 = @(5, 6); 50 = @(2, 6); 51 = @(2, 6); 52 = @(3, 7); 53 = @(4, 7) }),
                @('at', 'Austria', @{ 46 = @(9, 16); 47 = @(9, 17); 48 = @(12, 17) }),
                @('ch', 'Switzerland', @{ 45 = @(8, 9); 46 = @(5, 10); 47 = @(5, 10) }))
-$ChoiceNames = @{ 'default' = 'original'; 'enhanced' = 'enhanced'; 'Knicks' = 'hedgebanks (Knicks)' }
+$ChoiceNames = @{ 'default' = 'original'; 'enhanced' = 'green hedges'; 'Knicks' = 'green hedges + hedgebanks (Knicks)' }
 
 function TK([int]$s, [int]$w) { "$s,$w" }
 function Get-RectsTiles($rects) {
@@ -1988,10 +1990,10 @@ function Read-Hedges([string]$current) {
     Write-Host '  Step 3/3  Hedges'
     Write-Host '  How hedges and tree rows look. Official hedge maps add missing hedges.'
     Write-Host ''
-    Write-Host '    [1] Original     as simHeaven made them'
-    Write-Host '    [2] Enhanced     taller, greener hedges (4 - 5 m)'
-    Write-Host '    [3] Hedgebanks   Northern Germany and Denmark: bushes on earth banks'
-    Write-Host '        (Knicks)     with single hedgerow trees. Elsewhere: [2]'
+    Write-Host '    [1] Original          as simHeaven made them'
+    Write-Host '    [2] Green hedges      4 - 5 m, all four seasons, visible up to 8 km'
+    Write-Host '    [3] + Hedgebanks      green hedges, plus the Knick look in northern Germany'
+    Write-Host '        (Knicks)          and Denmark: mixed bushes with single tall trees'
     Write-Host ''
     $cur = if ($current -eq 'Knicks') { '3' } elseif ($current -eq 'enhanced') { '2' } else { '1' }
     while ($true) {
@@ -2057,19 +2059,21 @@ function Confirm-FreeOff($xp, $det) {
     return (Get-HmDetect $xp)
 }
 
-function Invoke-ChooseSettings($xp, $targets, [switch]$Quick) {
+function Invoke-ChooseSettings($xp, $targets, [switch]$Quick, [hashtable]$Preset, [switch]$PlanOnly) {
     # -Quick: recommended settings without the three steps (tree spacing 0.7, height 0.7, hedgebanks, with
     # X-WORLD Pro all countries that have Pro tiles); the summary is still shown for confirmation
-    if (Test-Blocked) { return }
+    # -Preset @{ Fac; H; Hedges; Countries }: settings chosen in the window instead of the three steps
+    # -PlanOnly: only work out what would change and return it (live preview of the window), nothing is asked or changed
+    if (-not $PlanOnly) { if (Test-Blocked) { return } }
     $wasOff = Test-SwitchedOff $xp
-    Confirm-TweakActive $xp $targets
+    if (-not $PlanOnly) { Confirm-TweakActive $xp $targets }
     # state read at the start (or by Status) is still valid when nothing was changed since then
     $st = $script:StCache
     if ($wasOff -or -not $st) { $st = Get-ForestState $xp $targets }
     $tweaked = $st.N -gt 0
     $ho = Get-HedgeOverview $xp
     $ki = Get-KnickInfo $xp
-    $det = Confirm-FreeOff $xp (Get-HmDetect $xp)
+    $det = if ($PlanOnly) { Get-HmDetect $xp } else { Confirm-FreeOff $xp (Get-HmDetect $xp) }
     $hasSh = [bool]($ho.Files.Count -or $det.Pro.Count -or $det.Free.Count)
     $hchoice = if ($hasSh) { Get-HedgeChoice $xp $ho.Overall } else { 'default' }
     $info = Get-HmInfo $xp
@@ -2078,11 +2082,17 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick) {
     $want = $hchoice; $wantC = $curC
     if ($Quick) {
         Write-Host ''
-        Write-Host ('  Recommended setup: tree spacing 0.7, tree height 0.7 (realistic)' + $(if ($hasSh) { ', hedgebanks (Knicks)' } else { '' }))
+        Write-Host ('  Recommended setup: tree spacing Dense (0.7), tree height Smaller (0.7)' + $(if ($hasSh) { ', green hedges + hedgebanks (Knicks)' } else { '' }))
         $fac = $DefaultFac; $hf = $DefaultHeight
         if ($hasSh) {
             $want = 'Knicks'
-            if ($det.Pro.Count) { $wantC = @(Get-ProCountries $xp | ForEach-Object { $_[0] }) }
+            if ($det.Pro.Count) { $wantC = @((Get-ProCountries $xp) | ForEach-Object { $_[0] }) }
+        }
+    } elseif ($Preset) {
+        $fac = [double]$Preset.Fac; $hf = [double]$Preset.H
+        if ($hasSh) {
+            $want = [string]$Preset.Hedges
+            if ($det.Pro.Count -and $want -ne 'default') { $wantC = @($Preset.Countries) }
         }
     } else {
         Write-Host ''
@@ -2121,7 +2131,7 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick) {
     $overlayChange = $overlayOn -and ((-not $info) -or $info.Version -ne $Version -or $info.Choice -ne $want -or ((@($info.Countries | Sort-Object) -join ' ') -ne (@($wantC | Sort-Object) -join ' ')) -or $changed.Count -gt 0 -or $planDiff)
     $libChange = $overlayOn -and ((-not $ki.On) -or $ki.H -ne $hf -or $ki.HP -ne $hp -or (Get-KnickLibVersion $xp) -ne $Version -or $hchoice -ne $want -or $overlayChange)
     $hedgeChange = $hasSh -and ($want -ne $hchoice -or $overlayChange -or $libChange)
-    $hedgeNeed = [long]0
+    $hedgeNeed = [long]0; $planTiles = 0; $planNew = 0; $planSec = 0.0
     Write-Host ''
     Write-Host ''
     Write-Host '  Summary'
@@ -2155,6 +2165,7 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick) {
         $nD = @($newT | Where-Object { $dataT.Contains($_) }).Count; $nP = $newT.Count - $nD
         $hedgeNeed = [long](($nD * 2.7 + $nP * 1.3) * 1MB)
         $sec = $nD * 1.1 + $nP * 0.3
+        $planTiles = $plan.Count; $planNew = $nNew; $planSec = $sec
         $size = if ($hedgeNeed -ge 1GB) { '{0:N1} GB' -f ($hedgeNeed / 1GB) } else { '{0:N0} MB' -f [Math]::Max(1, $hedgeNeed / 1MB) }
         if ($nNew) { Write-Host ('    {0,6} hedge tiles       {1} to build, {2}, up to about {3}' -f $plan.Count, $nNew, (Format-TimeRange $sec), $size) }
         else { Write-Host ('    {0,6} hedge tiles       up to date' -f $plan.Count) }
@@ -2162,6 +2173,15 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick) {
     }
     if ($hedgeChange -and $ho.Files.Count -and (($want -ne 'default') -ne ($ho.Overall -eq 'enhanced'))) { Write-Host ('    {0,6} free X-World hedge files' -f $ho.Files.Count) }
     if ($hedgeChange -and -not $overlayOn -and ($ki.On -or (Test-ShInfo $xp))) { Write-Host '         2 tweak folders     removed' }
+    if ($PlanOnly) {
+        $pn = [long]0; $pt = 0.0
+        if ($forestChange) {
+            if ($hf -lt 1.0) { $pn = [long]((Get-Files $targets | Measure-Object Length -Sum).Sum * 0.35) }
+            $pt = Get-Estimate $st $hf $rebuild
+        }
+        return [pscustomobject]@{ Nothing = (-not $forestChange -and -not $hedgeChange); Forest = $forestChange; Files = $st.Files
+            Hedge = $hedgeChange; Tiles = $planTiles; NewTiles = $planNew; Sec = ($pt + $planSec); Bytes = ($pn + $hedgeNeed) }
+    }
     if (-not $forestChange -and -not $hedgeChange) { Write-Host '    nothing'; return }
     $need = 0
     if ($forestChange -and $hf -lt 1.0) {
@@ -2514,6 +2534,7 @@ function Invoke-CheckRepair($xp, $targets) {
 }
 
 # ---------------------------------------------------------------- main
+if ($FdtLib) { return }      # loaded by the window (XP12_ForestTweak_Gui.ps1): functions only
 $upd = Start-UpdateCheck
 $t0Main = [DateTime]::Now
 try {

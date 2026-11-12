@@ -45,12 +45,13 @@ In-sim window (`ForestDensityToggle.lua`): density from 1.0x to 2.8x as many tre
 ## Features
 
 - **Windows, macOS and Linux:** one tool per system with the same logic and the same backup log, so a tweak made on one system can be restored on the other
-- **Simple menu:** Choose settings · Restore original · Status · Check & repair. Three steps (tree spacing, tree height, hedges); you pick all values first and confirm a summary before anything is changed
+- **Windows: a window with all settings** (new in 1.6.0) – tree spacing, tree height and hedges on one page with a live preview of what will change. Optional setup with uninstall, and updates from inside the app
+- **macOS/Linux: simple menu** – Recommended setup · Choose settings · Restore original · Status · Check & repair. You pick all values first and confirm a summary before anything is changed
 - **Presets for the tree spacing:** *Natural* 0.8, *Dense* 0.7 (recommended), *Very dense* 0.6, or your own value from 0.4 to 1.0
 - **Optional tree height:** factor 0.5 – 1.0 with a realistic height profile (conifers shrink less, shrubs hardly). The 3D tree models are scaled too, so near and far trees match
 - **Global Forests v2 cropland:** field trees and hedgerows between fields get an extra factor 0.8, so field edges are filled more evenly
 - **Fuller sparse forests (Global Forests v2):** sparse forest areas get extra trees, dense areas stay as they are
-- **Optional: hedges** *original*, *enhanced* (green hedges 4–5 m, all four seasons) or **hedgebanks (Knicks)** with bushes and single trees in northern Germany and Denmark – with simHeaven X-World (free) and X-WORLD Pro, see below
+- **Optional: hedges** *Original*, *Green hedges* (4–5 m, all four seasons) or **+ Hedgebanks**: green hedges plus the Knick look in northern Germany and Denmark (mixed bushes with single tall trees) – with simHeaven X-World (free) and X-WORLD Pro, see below
 - **Official hedge maps** of Schleswig-Holstein, Lower Saxony/Bremen/Hamburg, North Rhine-Westphalia, Bavaria, Brandenburg and Denmark add the hedges OpenStreetMap does not have
 - **simHeaven X-WORLD Pro:** detected automatically. Its hedges (flat textured walls (facades) without seasons) become green hedges in the countries you choose
 - **Fully reversible:** the original values are logged and restored byte-for-byte; 3D model backups are protected by a checksum
@@ -66,9 +67,11 @@ In-sim window (`ForestDensityToggle.lua`): density from 1.0x to 2.8x as many tre
 > **This is not a plugin.** It is a small tool you run once, outside X-Plane. Do not copy it into `Resources\plugins`. Only the optional in-sim window (`ForestDensityToggle.lua`) goes into the FlyWithLua folder, see below.
 
 1. **Quit X-Plane.** The tool won't change anything while X-Plane is running.
-2. Download the ZIP for your system from [Releases](../../releases) (`…_Windows.zip`, `…_macOS.zip` or `…_Linux.zip`) and unzip it anywhere. No renaming needed. If you unzip it into your X-Plane 12 folder, X-Plane is found automatically. Otherwise the tool reads `x-plane_install_12.txt` or asks for the path.
-3. Start the tool for your system (see below). If Global Forests v2 is installed, it asks whether to include it.
-4. Choose from the menu:
+2. Download from [Releases](../../releases):
+   - **Windows:** `…_Setup.exe` (recommended) or `…_Windows.zip` (no installation, unzip anywhere), see [Windows](#windows)
+   - **macOS / Linux:** `…_macOS.zip` or `…_Linux.zip`, unzip it anywhere. No renaming needed. If you unzip it into your X-Plane 12 folder, X-Plane is found automatically. Otherwise the tool reads `x-plane_install_12.txt` or asks for the path.
+3. Start the tool for your system (see below). If Global Forests v2 is installed, it asks whether to include it (Windows: a tick box on the Settings page).
+4. Windows: choose in the window, see [Windows](#windows). macOS/Linux: choose from the menu:
    - `0` **Recommended setup** – tree spacing 0.7, tree height 0.7 and (with simHeaven) hedgebanks in one step, then the summary to confirm
    - `1` **Choose settings** – tree spacing, tree height and (with simHeaven) hedges, in three steps. Then a summary of what will be changed, with an estimated time; nothing is changed until you confirm it. With tree height and Global Forests v2 it can take 10 minutes or more
    - `2` **Restore original** – puts back the original forests and hedges
@@ -80,9 +83,31 @@ Run it once. After an X-Plane or Global Forests update, start it again: it notic
 
 ### Windows
 
-Double-click `Start_ForestTweak.bat`. One tool for vanilla X-Plane, simHeaven X-World and Global Forests v2.
+**Setup (recommended):** run `XP12_ForestTweak_v1.6.0_Setup.exe`. It installs for your Windows user only, without admin rights, into `X-Plane 12\ForestDensityTweak\app` next to the backups of the tool. It finds your X-Plane 12 folder, can install the in-sim window (if FlyWithLua is there) and puts a shortcut **Forest Tweak** into your X-Plane 12 folder (Start menu and desktop optional). The setup itself changes nothing in X-Plane. Uninstall in *Windows Settings → Apps*: it offers to restore the original forests and hedges first.
 
-No admin rights needed. Uses PowerShell, which ships with Windows 10/11.
+> **"Windows protected your PC"?** The setup is not code-signed (a certificate costs money every year, this is a free project). Click *More info → Run anyway*. The code of the setup is in the repository (`setup/`).
+
+**Without installation:** unzip `…_Windows.zip` anywhere and double-click `Start_ForestTweak.bat`. At the first start the window shows the license.
+
+**The window:**
+
+| Page | What it does |
+|---|---|
+| **Recommended** | tree spacing *Dense*, tree height *Smaller* and (with simHeaven) *+ Hedgebanks* in one click. Shows what is active in X-Plane now |
+| **Settings** | all choices on one page; below them a live preview of what will change (files, hedge tiles, time, disk space) |
+| **Status** | what is tweaked, simHeaven packs found, tool.log |
+| **Check & repair** | checks the backups, finishes or updates the hedge tiles |
+| **Quick switch** | tweak ↔ original in a few seconds, without calculating again |
+| **Restore original** | puts back the original forests and hedges |
+| **Log / help** | everything the tool wrote, README, the console version |
+
+*Apply* shows the summary first, nothing is changed before you confirm. While X-Plane runs, the *Apply* buttons are locked. The window follows the Windows light/dark setting.
+
+**Updates:** at start the window asks GitHub for a newer version. *Update now* downloads it, checks its SHA-256 checksum against the one GitHub publishes for the file, and installs it (setup: the new setup runs silently; ZIP: the tool replaces its own files, the old ones are kept in `_update_backup`). Afterwards it offers to apply your settings again. If Smart App Control or an antivirus blocks it, it opens the download page instead.
+
+**Console menu:** `Start_ForestTweak_Console.bat` (in the ZIP and in the app folder) starts the same tool with the keyboard menu, like on macOS/Linux.
+
+No admin rights needed. Uses Windows PowerShell, which ships with Windows 10/11.
 
 Coming from 1.3 or older: just use the new tool – it reads the same backup log. You can delete the old `Start_Vanilla-simHeaven.bat`, `Start_GlobalForestsV2.bat` and their `.ps1` files.
 
@@ -143,21 +168,21 @@ To change a value later, just run *Choose settings* again: the tool restores the
 
 simHeaven X-World draws hedges from OpenStreetMap, for example the typical *Knicks* (hedgebanks: hedges on earth walls) in northern Germany. In the free X-World they are only 2.2–2.8 m high and disappear 4 km away. simHeaven X-WORLD Pro draws them as flat textured walls (facades) without seasons. Many hedges are missing in OpenStreetMap altogether, so from the air the fields look bare.
 
-The tool finds out which simHeaven add-ons are installed. Step 3 of *Choose settings* gives the same look with both:
+The tool finds out which simHeaven add-ons are installed. The hedge choice (Windows: *Settings* page, macOS/Linux: step 3 of *Choose settings*) gives the same look with both:
 
 | Choice | Free X-World | X-WORLD Pro |
 |---|---|---|
 | **[1] Original** | as simHeaven made them | as simHeaven made them |
-| **[2] Enhanced** | green hedges about 4–5 m, visible up to 8 km, worldwide | the flat walls become green hedges about 4–5 m in the countries you choose |
-| **[3] Hedgebanks (Knicks)** | hedgebanks in the Knick areas, elsewhere *enhanced* | hedgebanks in the Knick areas, *enhanced* in the other chosen countries |
+| **[2] Green hedges** | green hedges about 4–5 m, visible up to 8 km, worldwide | the flat walls become green hedges about 4–5 m in the countries you choose |
+| **[3] + Hedgebanks** | Knick look in the Knick areas, elsewhere green hedges | Knick look in the Knick areas, green hedges in the other chosen countries |
 
 All new hedges change with the four seasons. Without simHeaven, step 3 is skipped.
 
-**Hedgebanks (Knicks):** in the Knick and Wallhecken areas – Schleswig-Holstein, Hamburg, north-west Lower Saxony, west Mecklenburg and Denmark – hedges become bushes of 1.5–8 m with hedgerow trees (Überhälter) of 6–14 m (oaks, ashes, maples), changing in sections of about 100 m. Tree rows get mixed trees with bushes in between, scrub areas get dense bushes with a few small trees. Everything follows your tree height. X-Plane can only limit this to whole 1×1° tiles, so some neighbouring areas are included too (e.g. Hannover, Rostock, western Skåne).
+**+ Hedgebanks (Knick look):** in the Knick and Wallhecken areas – Schleswig-Holstein, Hamburg, north-west Lower Saxony, west Mecklenburg and Denmark – hedges become mixed bushes of 1.5–8 m with single hedgerow trees (Überhälter) of 6–14 m (oaks, ashes, maples), changing in sections of about 100 m. The bushes and trees are drawn, not the earth bank itself. Tree rows get mixed trees with bushes in between, scrub areas get dense bushes with a few small trees. Everything follows your tree height. X-Plane can only limit this to whole 1×1° tiles, so some neighbouring areas are included too (e.g. Hannover, Rostock, western Skåne).
 
-**X-WORLD Pro countries:** with Pro, *Enhanced* and *Hedgebanks* ask for the countries: Germany, Denmark, Benelux, Austria, Switzerland, or all Pro tiles on your computer. The Knick areas are always included. The tool reads the Pro hedge lines on your computer and builds green hedges from them (a few seconds per tile).
+**X-WORLD Pro countries:** with Pro, *Green hedges* and *+ Hedgebanks* ask for the countries (preselected: all countries with Pro tiles on your computer): Germany, Denmark, Benelux, Austria, Switzerland, or all Pro tiles on your computer. The Knick areas are always included. The tool reads the Pro hedge lines on your computer and builds green hedges from them (a few seconds per tile).
 
-**Official hedge maps:** with *Enhanced* or *Hedgebanks*, the tool adds the hedges, tree rows and copses of official maps that come with it (folder `data/`, about 30 MB):
+**Official hedge maps:** with *Green hedges* or *+ Hedgebanks*, the tool adds the hedges, tree rows and copses of official maps that come with it (folder `data/`, about 30 MB):
 
 | Region | Source |
 |---|---|
@@ -168,9 +193,9 @@ All new hedges change with the four seasons. Without simHeaven, step 3 is skippe
 | Brandenburg | MLEUV Brandenburg, landscape elements |
 | Denmark | Slots- og Kulturstyrelsen, protected earth banks (*diger*; stone walls left out) |
 
-With *Hedgebanks* the map hedges become hedgebanks in the Knick areas and green hedges elsewhere; with *Enhanced* they are green hedges everywhere. Where a map has a hedge, it replaces the simHeaven one; the simHeaven hedges the maps don't have are taken over, so nothing is lost and nothing is doubled.
+With *+ Hedgebanks* the map hedges get the Knick look in the Knick areas and become green hedges elsewhere; with *Green hedges* they are green hedges everywhere. Where a map has a hedge, it replaces the simHeaven one; the simHeaven hedges the maps don't have are taken over, so nothing is lost and nothing is doubled.
 
-**Where it goes:** the hedges are built on your computer into `Custom Scenery/XP12_ForestTweak_HedgerowMap` (up to about 250 MB with Pro in five countries), the hedge types into the small library `Custom Scenery/XP12_ForestTweak_Knicks` (trees copied from the X-Plane default forests, about 13 MB). Both are listed in `scenery_packs.ini` above simHeaven (a backup is kept in `ForestDensityTweak`). With the free X-World, *Enhanced* also changes the hedge files of the *simHeaven X-World Vegetation Library*; the original lines are logged in `ForestDensityTweak/hedges.log`. simHeaven files are otherwise only read, nothing of simHeaven is shipped. *Restore original* removes everything again.
+**Where it goes:** the hedges are built on your computer into `Custom Scenery/XP12_ForestTweak_HedgerowMap` (up to about 250 MB with Pro in five countries), the hedge types into the small library `Custom Scenery/XP12_ForestTweak_Knicks` (trees copied from the X-Plane default forests, about 13 MB). Both are listed in `scenery_packs.ini` above simHeaven (a backup is kept in `ForestDensityTweak`). With the free X-World, *Green hedges* and *+ Hedgebanks* also change the hedge files of the *simHeaven X-World Vegetation Library*; the original lines are logged in `ForestDensityTweak/hedges.log`. simHeaven files are otherwise only read, nothing of simHeaven is shipped. *Restore original* removes everything again.
 
 If the free X-World and X-WORLD Pro are both active for the same region, the tool offers to turn the free packs off. After a simHeaven update, run **Check & repair**: it rebuilds the hedge tiles whose simHeaven source changed.
 
@@ -186,7 +211,7 @@ The tool raises the maximum density in the forest files. What you see is still l
 
 ## Antivirus warning (Windows)
 
-Some antivirus programs (e.g. Bitdefender, "Gen:Variant.MSIL…") report a file in your Temp folder when the tool starts. That's a false positive. The Windows tool is only a `.bat` and a PowerShell script you can read in Notepad. A small part of the script is written in C# for the heavy work (3D trees, hedge tiles), and Windows PowerShell compiles that part into a temporary .NET file at every start. A new unsigned .NET file with a random name is what the heuristics flag. Avoiding that would need a paid code-signing certificate, which this free project doesn't have. Pause the antivirus while the tool runs, or report the false positive to your antivirus vendor.
+Some antivirus programs (e.g. Bitdefender, "Gen:Variant.MSIL…") report a file in your Temp folder when the tool starts. That's a false positive. The Windows tool is only a `.bat` and a PowerShell script you can read in Notepad. A small part of the script is written in C# for the heavy work (3D trees, hedge tiles), and Windows PowerShell compiles that part into a temporary .NET file at every start. A new unsigned .NET file with a random name is what the heuristics flag. Avoiding that would need a paid code-signing certificate, which this free project doesn't have. Pause the antivirus while the tool runs, or report the false positive to your antivirus vendor. The unsigned setup can show *Windows protected your PC* for the same reason: *More info → Run anyway*.
 
 ## In-sim window (optional)
 
@@ -206,12 +231,12 @@ Key bindings: search `ForestDensity` in the keyboard settings.
 - **Changed folders:** `Resources/default scenery/1200 forests`, plus `Custom Scenery/Global_Forests_v2` if you include it. Hedges: `Custom Scenery/simHeaven_X-World_Vegetation_Library` (hedge files only, free X-World) and the tool's own folders `Custom Scenery/XP12_ForestTweak_Knicks` and `Custom Scenery/XP12_ForestTweak_HedgerowMap` plus their lines in `scenery_packs.ini`. simHeaven X-World and X-WORLD Pro link their forests to the default forest files, so they are covered too.
 - **Backup:** original values in `<X-Plane 12>/ForestDensityTweak/backup.log`. **Keep this folder while the tweak is active.**
 - **Tool log:** `ForestDensityTweak/tool.log` lists what the tool did – please attach it to bug reports.
-- **Update check:** at start the tool asks GitHub for the latest release (max. 3 s, nothing is sent, silent if offline). It only shows a hint, it never downloads anything.
+- **Update check:** at start the tool asks GitHub for the latest release (nothing is sent, silent if offline). The console versions only show a hint. The Windows window downloads an update only when you click *Update now*, and only if its SHA-256 checksum matches the one GitHub publishes.
 
 ## Undo
 
 - Use **Restore original** in the menu. It writes back the exact original values.
-- To compare, use **[5] Switch to original**: forests, hedges and Knicks are original again, your tweak is kept next to the files (`.fdt_tweak` / `.fdt_orig`). **[5]** again switches back in a few seconds. The first switch keeps a copy of the original files (about as much disk space as the tweaked files, with 3D trees and Global Forests v2 a few GB). *Choose settings*, *Restore original* and *Check & repair* switch back to the tweak first.
+- To compare, use **Quick switch** (console: **[5] Switch to original**): forests, hedges and Knicks are original again, your tweak is kept next to the files (`.fdt_tweak` / `.fdt_orig`). Switching again brings the tweak back in a few seconds. The first switch keeps a copy of the original files (about as much disk space as the tweaked files, with 3D trees and Global Forests v2 a few GB). *Choose settings*, *Restore original* and *Check & repair* switch back to the tweak first.
 - If a 3D model backup is missing or damaged, that file stays tweaked (it is never scaled twice). Run the X-Plane installer (*Update*) or reinstall Global Forests v2, then **Check & repair**.
 
 ## Performance
@@ -229,9 +254,10 @@ More trees means more GPU work, especially when flying low over large forests. C
 
 | Folder | Content | Download |
 |---|---|---|
-| `Windows/` | `Start_ForestTweak.bat` + `XP12_ForestTweak.ps1` | `XP12_ForestTweak_v1.5.2_Windows.zip` |
-| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.5.2_macOS.zip` |
-| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.5.2_Linux.zip` |
+| `Windows/` | `Start_ForestTweak.bat` (window) + `XP12_ForestTweak_Gui.ps1`, `Start_ForestTweak_Console.bat` + `XP12_ForestTweak.ps1` (the tool), `forest.ico` | `XP12_ForestTweak_v1.6.0_Windows.zip` |
+| `setup/` | `XP12_ForestTweak.iss` (Inno Setup script of the Windows setup), `build_setup.bat` | `XP12_ForestTweak_v1.6.0_Setup.exe` |
+| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.6.0_macOS.zip` |
+| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.6.0_Linux.zip` |
 | `FlyWithLua/` | `ForestDensityToggle.lua` (in-sim window, all systems) | included in every ZIP |
 | `data/` | `hedgerow_map_*.dat` (official hedge maps) + `DATA_LICENSES.txt` – each map under its own license | included in every ZIP |
 
@@ -251,6 +277,8 @@ Official hedge maps in `data/` (only outlines and type kept, coordinates convert
 - `hedgerow_map_dk.dat` – Slots- og Kulturstyrelsen – [Beskyttede sten- og jorddiger](https://arealdata.miljoeportal.dk/datasets/urn:dmp:ds:beskyttede-sten-og-jorddiger), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 The data providers do not endorse this project. Hedges and tree rows elsewhere come from simHeaven X-World or X-WORLD Pro (OpenStreetMap data, © OpenStreetMap contributors, ODbL) on your own computer and are not part of this tool.
+
+The Windows setup is made with [Inno Setup](https://jrsoftware.org/isinfo.htm) by Jordan Russell and Martijn Laan (the setup program itself is under the Inno Setup license).
 
 ## Changelog
 

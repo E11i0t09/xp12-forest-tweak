@@ -1,6 +1,6 @@
 --[[
   ForestDensityToggle.lua  -  in-sim window of XP12 Forest Tweak
-  Version 1.5.2 (2026-11-10)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.6.0 (2026-11-12)   https://github.com/E11i0t09/xp12-forest-tweak
   (c) E11i0t09. Free community project, not for sale. License: CC BY-NC-SA 4.0 with additional permission (free use also for companies and flight schools), see the LICENSE file.
 
   In-sim control of the forest density on top of the tweak, without touching
@@ -407,10 +407,10 @@ function fdt_build(w, x, y)
         kv("Undergrowth", "scaled along")
     end
     if knicks_on then
-        local name = hedge_choice == "enhanced" and "enhanced (4-5 m)" or "hedgebanks (Knicks) N Germany/DK"
+        local name = hedge_choice == "enhanced" and "green hedges (4-5 m)" or "green hedges + hedgebanks (Knicks)"
         kv("Hedges", knick_map_on and (name .. " + hedge maps") or name, C_GREEN_TXT)
     elseif hedge_files ~= nil then
-        if hedge_files > 0 then kv("Hedges", "enhanced (4-5 m, up to 8 km)", C_GREEN_TXT)
+        if hedge_files > 0 then kv("Hedges", "green hedges (4-5 m, up to 8 km)", C_GREEN_TXT)
         else kv("Hedges", "default") end
     end
     colored(C_DIM_TXT, "Change with the tweak tool, X-Plane closed.")
@@ -528,5 +528,5 @@ end
 
 if cfg.visible then open_window() end
 
-logMsg(string.format("ForestDensityToggle 1.5.2: ready (dense %.2f, original %.2f, factor %.2f, height %.2f, %d files, %d with 3D models scaled)",
+logMsg(string.format("ForestDensityToggle 1.6.0: ready (dense %.2f, original %.2f, factor %.2f, height %.2f, %d files, %d with 3D models scaled)",
        dense_value, orig_value(), factor, height, info.files, info.meshes))

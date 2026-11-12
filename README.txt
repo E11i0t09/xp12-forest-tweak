@@ -1,4 +1,4 @@
-XP12 Forest Tweak  v1.5.2
+XP12 Forest Tweak  v1.6.0
 =========================
 
 Denser forests, optionally smaller trees (3D trees included) and real-looking
@@ -15,12 +15,14 @@ Do not copy it into Resources/plugins. No renaming needed.
 
 DOWNLOADS / FOLDERS
 -------------------
-Download the ZIP for your system - each one contains everything you need:
-  XP12_ForestTweak_v1.5.2_Windows.zip  (folder Windows/ in the repository)
+Download the file for your system - each one contains everything you need:
+  XP12_ForestTweak_v1.6.0_Setup.exe    (Windows setup, recommended; folder setup/)
+      installs without admin rights, shortcut "Forest Tweak" in X-Plane 12
+  XP12_ForestTweak_v1.6.0_Windows.zip  (folder Windows/, no installation)
       Start_ForestTweak.bat            (double-click), no admin rights needed
-  XP12_ForestTweak_v1.5.2_macOS.zip    (folder macOS/)
+  XP12_ForestTweak_v1.6.0_macOS.zip    (folder macOS/)
       Start_ForestTweak_macOS.command  (double-click), needs Python 3.8+
-  XP12_ForestTweak_v1.5.2_Linux.zip    (folder Linux/)
+  XP12_ForestTweak_v1.6.0_Linux.zip    (folder Linux/)
       start_forest_tweak_linux.sh      (sh start_forest_tweak_linux.sh), Python 3.8+
   FlyWithLua/ForestDensityToggle.lua (optional in-sim window, in every ZIP)
 
@@ -35,7 +37,7 @@ HOW TO USE
    automatically). Otherwise the tool finds X-Plane via x-plane_install_12.txt
    or asks for the path.
 3. Start the tool for your system (see above).
-4. Menu: [0] Recommended setup  [1] Choose settings  [2] Restore original
+4. macOS/Linux menu (Windows: the same choices in a window, see README.md): [0] Recommended setup  [1] Choose settings  [2] Restore original
    [3] Status  [4] Check & repair
    [5] Switch to original / back to tweak (a few seconds, nothing calculated again)
 
@@ -58,8 +60,9 @@ HOW TO USE
           and keeps a compressed backup of the originals (with checksum) in
           ForestDensityTweak/mesh_backup (about 1.5 GB with GFv2).
   Step 3  Hedges (only with simHeaven X-World or X-WORLD Pro, see below):
-            [1] Original  [2] Enhanced  [3] Hedgebanks (Knicks)
-          With X-WORLD Pro and [2] or [3]: choose the countries.
+            [1] Original  [2] Green hedges  [3] + Hedgebanks (Knicks)
+          With X-WORLD Pro and [2] or [3]: choose the countries (all
+          countries with Pro tiles are preselected).
   To change values later, just run Choose settings again.
   The summary shows an estimated time. With tree height and Global Forests
   v2 it can take 10 minutes or more.
@@ -70,7 +73,7 @@ In natural forests the trees are spread more randomly, so dense forests show
 no lines from the planting grid.
 At start the tool shows a short status line and warns if the vegetation
 slider is not at maximum, if Global Forests v2 is disabled or not tweaked,
-or if a newer version is available (it only asks GitHub, max. 3 s).
+or if a newer version is available (it only asks GitHub, nothing is sent).
 
 
 I DON'T SEE A DIFFERENCE
@@ -88,16 +91,18 @@ still limited by
 HEDGES AND HEDGEBANKS (OPTIONAL, WITH SIMHEAVEN)
 ------------------------------------------------
 The tool finds out which simHeaven add-ons are installed (free X-World,
-X-WORLD Pro). Step 3 of Choose settings gives the same look with both:
-  [1] Original    as simHeaven made them
-  [2] Enhanced    green hedges about 4 - 5 m, visible up to 8 km.
-                  Free X-World: worldwide. X-WORLD Pro (flat walls): rebuilt
-                  as green hedges in the countries you choose (Germany,
-                  Denmark, Benelux, Austria, Switzerland or all Pro tiles).
-  [3] Hedgebanks  (Knicks) in the Knick areas (Schleswig-Holstein, Hamburg,
-                  NW Lower Saxony, W Mecklenburg, Denmark): bushes on earth
-                  banks with single hedgerow trees (Ueberhaelter), mixed tree
-                  rows, denser scrub. Elsewhere as [2].
+X-WORLD Pro). The hedge choice gives the same look with both:
+  [1] Original      as simHeaven made them
+  [2] Green hedges  about 4 - 5 m, visible up to 8 km.
+                    Free X-World: worldwide. X-WORLD Pro (flat walls): rebuilt
+                    as green hedges in the countries you choose (Germany,
+                    Denmark, Benelux, Austria, Switzerland or all Pro tiles).
+  [3] + Hedgebanks  green hedges, plus the Knick look in the Knick areas
+                    (Schleswig-Holstein, Hamburg, NW Lower Saxony,
+                    W Mecklenburg, Denmark): mixed bushes with single tall
+                    hedgerow trees (Ueberhaelter), mixed tree rows, denser
+                    scrub. Only the bushes and trees are drawn, not the
+                    earth bank itself.
 All new hedges change with the four seasons.
 Official hedge maps (folder data/, see data/DATA_LICENSES.txt) add the hedges
 that OpenStreetMap does not have: Schleswig-Holstein, Lower Saxony/Bremen/
@@ -107,8 +112,8 @@ taken over.
 The tool builds the hedges on your computer into
 Custom Scenery/XP12_ForestTweak_HedgerowMap (up to about 250 MB) and the hedge
 types into Custom Scenery/XP12_ForestTweak_Knicks, both listed above
-simHeaven in scenery_packs.ini (backup kept). Free X-World: Enhanced also
-changes the hedge files of its Vegetation Library (originals logged in
+simHeaven in scenery_packs.ini (backup kept). Free X-World: [2] and [3] also
+change the hedge files of its Vegetation Library (originals logged in
 ForestDensityTweak/hedges.log). Nothing of simHeaven is shipped.
 Free X-World and X-WORLD Pro both on for one region: the tool offers to turn
 the free packs off. After a simHeaven update run Check & repair.
@@ -119,7 +124,8 @@ BACKUP / UNDO / CHECK & REPAIR
 ------------------------------
 Original values are logged in  <X-Plane 12>/ForestDensityTweak/backup.log
 "Restore original" writes them back exactly (forests and hedges).
-[5] switches between tweak and original in a few seconds: both versions are
+Quick switch ([5] in the console) switches between tweak and original in a
+few seconds: both versions are
 kept next to the files (.fdt_tweak / .fdt_orig, the first switch needs about as
 much disk space as the tweaked files). Do not
 delete this folder while the tweak is active.
