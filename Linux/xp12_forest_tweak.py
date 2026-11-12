@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 XP12 Forest Tweak - macOS / Linux version
-Version 1.5.2
+Version 1.6.0
 
 Denser forests and optionally smaller trees for X-Plane 12.
 Same logic and same backup log as the Windows (PowerShell) version, so a tweak made
@@ -26,9 +26,9 @@ What it does
   <X-Plane>/ForestDensityTweak/mesh_backup for an exact restore.
 - Every original line is logged in <X-Plane>/ForestDensityTweak/backup.log, so
   "Restore original" puts back the exact original values.
-- Optional, with simHeaven X-World (free) or X-WORLD Pro: hedges "original", "enhanced"
-  (green hedges about 4-5 m high, all four seasons) or "hedgebanks (Knicks)" (in northern
-  Germany and Denmark bushes on earth banks with single hedgerow trees, elsewhere enhanced).
+- Optional, with simHeaven X-World (free) or X-WORLD Pro: hedges "original", "green hedges"
+  (green hedges about 4-5 m high, all four seasons) or "green hedges + hedgebanks (Knicks)" (in northern
+  Germany and Denmark the Knick look: mixed bushes with single tall trees, elsewhere green hedges).
   Free X-World: the hedge files of its Vegetation Library are changed (originals logged in
   ForestDensityTweak/hedges.log). X-WORLD Pro draws hedges as walls, which can not be changed
   through a library, so the tool rebuilds them as hedges in the countries you choose.
@@ -64,7 +64,7 @@ import time
 from collections import Counter
 from decimal import Decimal, ROUND_HALF_UP
 
-VERSION = "1.5.2"
+VERSION = "1.6.0"
 TESTED_XP = (12, 4)      # X-Plane version the tool was tested with
 REPO = "E11i0t09/xp12-forest-tweak"
 THRESHOLD = 3.1          # files with a smaller tree spacing are grass/shrubs/hedges -> kept
@@ -1120,7 +1120,7 @@ def hedge_overview(xp):
 def hedge_status_text(files, overall):
     if not files:
         return "not installed"
-    return {"enhanced": "enhanced (about 4-5 m, visible up to 8 km)",
+    return {"enhanced": "green hedges (about 4-5 m, visible up to 8 km)",
             "default": "default (2.2-2.8 m, visible up to 4 km)"}.get(overall, overall)
 
 
@@ -1902,7 +1902,7 @@ COUNTRIES = (("de", "Germany", {47: (7, 13), 48: (7, 13), 49: (6, 13), 50: (5, 1
              ("bnl", "Benelux", {49: (5, 6), 50: (2, 6), 51: (2, 6), 52: (3, 7), 53: (4, 7)}),
              ("at", "Austria", {46: (9, 16), 47: (9, 17), 48: (12, 17)}),
              ("ch", "Switzerland", {45: (8, 9), 46: (5, 10), 47: (5, 10)}))
-CHOICE_NAMES = {"default": "original", "enhanced": "enhanced", "Knicks": "hedgebanks (Knicks)"}
+CHOICE_NAMES = {"default": "original", "enhanced": "green hedges", "Knicks": "green hedges + hedgebanks (Knicks)"}
 
 
 def rects_tiles(rects):
@@ -2539,10 +2539,10 @@ def ask_hedges(current):
     say("  Step 3/3  Hedges")
     say("  How hedges and tree rows look. Official hedge maps add missing hedges.")
     say()
-    say("    [1] Original     as simHeaven made them")
-    say("    [2] Enhanced     taller, greener hedges (4 - 5 m)")
-    say("    [3] Hedgebanks   Northern Germany and Denmark: bushes on earth banks")
-    say("        (Knicks)     with single hedgerow trees. Elsewhere: [2]")
+    say("    [1] Original          as simHeaven made them")
+    say("    [2] Green hedges      4 - 5 m, all four seasons, visible up to 8 km")
+    say("    [3] + Hedgebanks      green hedges, plus the Knick look in northern Germany")
+    say("        (Knicks)          and Denmark: mixed bushes with single tall trees")
     say()
     cur = {"Knicks": "3", "enhanced": "2"}.get(current, "1")
     while True:
@@ -2636,8 +2636,8 @@ def choose_settings(xp, targets, quick=False):
     want_h, want_c = hchoice, cur_c
     if quick:
         say()
-        say("  Recommended setup: tree spacing 0.7, tree height 0.7 (realistic)"
-            + (", hedgebanks (Knicks)" if has_sh else ""))
+        say("  Recommended setup: tree spacing Dense (0.7), tree height Smaller (0.7)"
+            + (", green hedges + hedgebanks (Knicks)" if has_sh else ""))
         fac, hf = DEFAULT_FAC, DEFAULT_HEIGHT
         if has_sh:
             want_h = "Knicks"
