@@ -1,4 +1,4 @@
-XP12 Forest Tweak  v1.6.0
+XP12 Forest Tweak  v1.6.1
 =========================
 
 Denser forests, optionally smaller trees (3D trees included) and real-looking
@@ -16,13 +16,13 @@ Do not copy it into Resources/plugins. No renaming needed.
 DOWNLOADS / FOLDERS
 -------------------
 Download the file for your system - each one contains everything you need:
-  XP12_ForestTweak_v1.6.0_Setup.exe    (Windows setup, recommended; folder setup/)
+  XP12_ForestTweak_v1.6.1_Setup.exe    (Windows setup, recommended; folder setup/)
       installs without admin rights, shortcut "Forest Tweak" in X-Plane 12
-  XP12_ForestTweak_v1.6.0_Windows.zip  (folder Windows/, no installation)
+  XP12_ForestTweak_v1.6.1_Windows.zip  (folder Windows/, no installation)
       Start_ForestTweak.bat            (double-click), no admin rights needed
-  XP12_ForestTweak_v1.6.0_macOS.zip    (folder macOS/)
+  XP12_ForestTweak_v1.6.1_macOS.zip    (folder macOS/)
       Start_ForestTweak_macOS.command  (double-click), needs Python 3.8+
-  XP12_ForestTweak_v1.6.0_Linux.zip    (folder Linux/)
+  XP12_ForestTweak_v1.6.1_Linux.zip    (folder Linux/)
       start_forest_tweak_linux.sh      (sh start_forest_tweak_linux.sh), Python 3.8+
   FlyWithLua/ForestDensityToggle.lua (optional in-sim window, in every ZIP)
 
@@ -63,6 +63,8 @@ HOW TO USE
             [1] Original  [2] Green hedges  [3] + Hedgebanks (Knicks)
           With X-WORLD Pro and [2] or [3]: choose the countries (all
           countries with Pro tiles are preselected).
+  Step 4  Forests from (only with simHeaven and Global Forests v2, see
+          FORESTS FROM SIMHEAVEN OR GLOBAL FORESTS V2 below).
   To change values later, just run Choose settings again.
   The summary shows an estimated time. With tree height and Global Forests
   v2 it can take 10 minutes or more.
@@ -86,6 +88,34 @@ still limited by
 - other scenery with its own forests (e.g. Orbx TrueEarth): Status lists it,
 - Global Forests v2 not included or disabled in scenery_packs.ini,
 - an X-Plane or GFv2 update: run Choose settings again.
+
+
+FORESTS FROM SIMHEAVEN OR GLOBAL FORESTS V2
+-------------------------------------------
+X-Plane removes the forests of all packs below an exclusion in
+scenery_packs.ini. Read from the DSF files of the packs:
+- Global Forests v2 cuts away the forests below it for the whole 1x1 degree
+  tile, everywhere.
+- simHeaven Europe (X-WORLD Pro Europe-10-forests, free X-World Europe) does
+  the same for the whole tile.
+- simHeaven X-WORLD Pro Africa, America, Asia, Antarctica cut away only their
+  own forest areas.
+So with simHeaven above Global Forests v2: in Europe only simHeaven forests,
+on the other continents simHeaven forests plus Global Forests v2 in the rest
+of the tile. With Global Forests v2 above: only Global Forests v2.
+  simHeaven          forests from OpenStreetMap: exact outlines, also parks,
+                     gardens, cemeteries, vineyards; in Europe gaps where
+                     nothing is mapped
+  Global Forests v2  forests from satellite data, also in remote areas
+If both are installed and Global Forests v2 is included, step 4 of Choose
+settings (Windows: "Forests from" on the Settings page) lets you choose per
+continent. For Global Forests v2 the tool switches the simHeaven forest pack
+of that continent off in scenery_packs.ini (backup kept); Restore original
+switches it on again.
+Global Forests v2 listed with a full path outside Custom Scenery (e.g. Orbx
+Central) is found and shown in Status, but not tweaked and not moved.
+The hedge packs (06-extras1, 07-extras2) are not affected. The tool reads the
+X-WORLD Pro hedges from them even when they are switched off in X-Plane.
 
 
 HEDGES AND HEDGEBANKS (OPTIONAL, WITH SIMHEAVEN)

@@ -83,7 +83,7 @@ Run it once. After an X-Plane or Global Forests update, start it again: it notic
 
 ### Windows
 
-**Setup (recommended):** run `XP12_ForestTweak_v1.6.0_Setup.exe`. It installs for your Windows user only, without admin rights, into `X-Plane 12\ForestDensityTweak\app` next to the backups of the tool. It finds your X-Plane 12 folder, can install the in-sim window (if FlyWithLua is there) and puts a shortcut **Forest Tweak** into your X-Plane 12 folder (Start menu and desktop optional). The setup itself changes nothing in X-Plane. Uninstall in *Windows Settings → Apps*: it offers to restore the original forests and hedges first.
+**Setup (recommended):** run `XP12_ForestTweak_v1.6.1_Setup.exe`. It installs for your Windows user only, without admin rights, into `X-Plane 12\ForestDensityTweak\app` next to the backups of the tool. It finds your X-Plane 12 folder, can install the in-sim window (if FlyWithLua is there) and puts a shortcut **Forest Tweak** into your X-Plane 12 folder (Start menu and desktop optional). The setup itself changes nothing in X-Plane. Uninstall in *Windows Settings → Apps*: it offers to restore the original forests and hedges first.
 
 > **"Windows protected your PC"?** The setup is not code-signed (a certificate costs money every year, this is a free project). Click *More info → Run anyway*. The code of the setup is in the repository (`setup/`).
 
@@ -199,6 +199,27 @@ With *+ Hedgebanks* the map hedges get the Knick look in the Knick areas and bec
 
 If the free X-World and X-WORLD Pro are both active for the same region, the tool offers to turn the free packs off. After a simHeaven update, run **Check & repair**: it rebuilds the hedge tiles whose simHeaven source changed.
 
+## Forests from simHeaven or Global Forests v2
+
+In X-Plane an exclusion removes the forests of all packs below it in `scenery_packs.ini` ([Laminar: DSF usage](https://developer.x-plane.com/article/dsf-usage-in-x-plane/)). Read from the DSF files of the packs:
+
+- **Global Forests v2** excludes the forests below it for every whole 1×1° tile it covers.
+- **simHeaven Europe** (X-WORLD Pro `Europe-10-forests`, free X-World Europe) does the same for the whole tile.
+- **simHeaven X-WORLD Pro Africa, America, Asia, Antarctica** exclude only their own forest areas.
+
+So with simHeaven above Global Forests v2 you get in Europe only the simHeaven forests, on the other continents the simHeaven forests plus Global Forests v2 in the rest of the tile. With Global Forests v2 above, only Global Forests v2 is shown.
+
+| | Forests from | Good to know |
+|---|---|---|
+| **simHeaven** | OpenStreetMap | exact outlines, also parks, gardens, cemeteries and vineyards; in Europe gaps where nothing is mapped |
+| **Global Forests v2** | satellite data | forests also in remote areas; no simHeaven park and garden trees |
+
+If both are installed and Global Forests v2 is included, you choose it **per continent** in the tool (Windows: *Forests from* on the Settings page, macOS/Linux: step 4 of *Choose settings*). For Global Forests v2 the tool switches the simHeaven forest pack of that continent off in `scenery_packs.ini` (backup kept, logged in `ForestDensityTweak/forest_source.json`); for simHeaven it switches it on again and puts Global Forests v2 below it. *Restore original* switches them on again. *Status* shows the choice per continent.
+
+Global Forests v2 listed with a full path outside `Custom Scenery` (e.g. Orbx Central installs) is found and shown in *Status*, but not tweaked and not moved by the tool.
+
+The simHeaven hedge packs (`06-extras1`, `07-extras2`) are not touched. The tool reads the X-WORLD Pro hedges from them even when they are switched off in X-Plane, so you can turn them off to save FPS and still get the tool's hedges.
+
 ## I don't see a difference
 
 The tool raises the maximum density in the forest files. What you see is still limited by:
@@ -254,10 +275,10 @@ More trees means more GPU work, especially when flying low over large forests. C
 
 | Folder | Content | Download |
 |---|---|---|
-| `Windows/` | `Start_ForestTweak.bat` (window) + `XP12_ForestTweak_Gui.ps1`, `Start_ForestTweak_Console.bat` + `XP12_ForestTweak.ps1` (the tool), `forest.ico` | `XP12_ForestTweak_v1.6.0_Windows.zip` |
-| `setup/` | `XP12_ForestTweak.iss` (Inno Setup script of the Windows setup), `build_setup.bat` | `XP12_ForestTweak_v1.6.0_Setup.exe` |
-| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.6.0_macOS.zip` |
-| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.6.0_Linux.zip` |
+| `Windows/` | `Start_ForestTweak.bat` (window) + `XP12_ForestTweak_Gui.ps1`, `Start_ForestTweak_Console.bat` + `XP12_ForestTweak.ps1` (the tool), `forest.ico`, `README.txt` | `XP12_ForestTweak_v1.6.1_Windows.zip` |
+| `setup/` | `XP12_ForestTweak.iss` (Inno Setup script of the Windows setup), `build_setup.bat` – builds the setup from this repository with Inno Setup 7 | `XP12_ForestTweak_v1.6.1_Setup.exe` |
+| `macOS/` | `Start_ForestTweak_macOS.command` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.6.1_macOS.zip` |
+| `Linux/` | `start_forest_tweak_linux.sh` + `xp12_forest_tweak.py` | `XP12_ForestTweak_v1.6.1_Linux.zip` |
 | `FlyWithLua/` | `ForestDensityToggle.lua` (in-sim window, all systems) | included in every ZIP |
 | `data/` | `hedgerow_map_*.dat` (official hedge maps) + `DATA_LICENSES.txt` – each map under its own license | included in every ZIP |
 
