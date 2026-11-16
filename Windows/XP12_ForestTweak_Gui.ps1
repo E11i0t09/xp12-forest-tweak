@@ -295,12 +295,12 @@ $Xaml = @'
               <RadioButton x:Name="DOwn" Style="{StaticResource Opt}" GroupName="d" Margin="0"><StackPanel><TextBlock FontWeight="SemiBold" Text="Own value"/><TextBox x:Name="DVal" Width="52" HorizontalAlignment="Left" Margin="0,2,0,0" Text="0.65"/></StackPanel></RadioButton>
             </UniformGrid>
             <TextBlock x:Name="DHint" Style="{StaticResource Small}" Margin="0,5,0,0" Text="More trees = more GPU load. &#x2605; = recommended"/>
-            <StackPanel x:Name="FsRow" Visibility="Collapsed" Margin="0,10,0,0"
-              ToolTip="simHeaven: forests from OpenStreetMap - exact outlines, also parks, gardens, cemeteries, vineyards.&#10;Global Forests v2: forests from satellite data, also in remote areas. The simHeaven forest pack of that continent is switched off (Restore original switches it on again).&#10;Europe: simHeaven and Global Forests v2 both cut away the forests below them for the whole 1x1 degree tile - only one of them is shown.&#10;Other continents: simHeaven cuts away only its own forest areas, so Global Forests v2 fills the rest of the tile.">
-              <TextBlock Style="{StaticResource H3}" Text="Forests from"/>
-              <WrapPanel x:Name="FsPanel" Margin="0,2,0,0"/>
-              <TextBlock x:Name="FsHint" Style="{StaticResource Small}" Margin="0,3,0,0" Text="Europe: only one of them per tile. Other continents: simHeaven + Global Forests v2 in the gaps."/>
-            </StackPanel>
+            <WrapPanel x:Name="FsRow" Visibility="Collapsed" Margin="0,5,0,0"
+              ToolTip="Ticked: forests from simHeaven (OpenStreetMap) - exact outlines, also parks, gardens, cemeteries, vineyards.&#10;Not ticked: forests from Global Forests v2 (satellite data), the simHeaven forest pack of that continent is switched off. Restore original switches it on again.&#10;Europe: only one of them per 1x1 degree tile. Other continents: simHeaven cuts away only its own forest areas, Global Forests v2 fills the rest.&#10;More trees = more GPU load.">
+              <TextBlock Style="{StaticResource Small}" FontSize="12.5" VerticalAlignment="Center" Margin="0,0,10,0" Text="simHeaven forests in:"/>
+              <StackPanel x:Name="FsPanel" Orientation="Horizontal" VerticalAlignment="Center"/>
+              <TextBlock Style="{StaticResource Small}" FontSize="12.5" VerticalAlignment="Center" Text="(not ticked = Global Forests v2)"/>
+            </WrapPanel>
           </StackPanel></Border>
           <Border Style="{StaticResource Group}"><StackPanel>
             <TextBlock Style="{StaticResource H3}" Text="Tree height"/>
@@ -601,27 +601,22 @@ function Set-State($s) {
 $script:Loading = $false
 $CountryBoxes = @{}
 $FsBoxes = [ordered]@{}
+function Set-FsVis([bool]$on) {
+    # the forest-source line takes the place of the GPU hint (same height, Apply stays visible)
+    $U.FsRow.Visibility = $(if ($on) { 'Visible' } else { 'Collapsed' })
+    $U.DHint.Visibility = $(if ($on) { 'Collapsed' } else { 'Visible' })
+}
 function Build-FsPanel($s) {
-    # one row per continent: name, simHeaven / GFv2 (nothing checked = mixed, stays as it is)
+    # one tick box per continent: ticked = simHeaven, not ticked = Global Forests v2, empty = mixed (stays as it is)
     $U.FsPanel.Children.Clear(); $FsBoxes.Clear()
-    $opt = $W.FindResource('Opt')
     foreach ($e in @($s.FsConts)) {
-        $sp = New-Object Windows.Controls.StackPanel; $sp.Orientation = 'Horizontal'; $sp.Margin = [Windows.Thickness]::new(0, 4, 18, 0)
-        $tb = New-Object Windows.Controls.TextBlock; $tb.Text = $e.C; $tb.MinWidth = 92; $tb.VerticalAlignment = 'Center'; $tb.FontSize = 12.5
-        [void]$sp.Children.Add($tb)
-        $rs = @{}
-        foreach ($o in @(@('Sh', 'simHeaven', 'simheaven'), @('Gf', 'GFv2', 'gfv2'))) {
-            $rb = New-Object Windows.Controls.RadioButton; $rb.Style = $opt; $rb.GroupName = 'fs_' + $e.C
-            $t = New-Object Windows.Controls.TextBlock; $t.Text = $o[1]; $t.FontSize = 12.5; $rb.Content = $t
-            if ($o[0] -eq 'Gf') { $rb.Margin = [Windows.Thickness]::new(0) }
-            $rb.IsChecked = ($e.V -eq $o[2])
-            $rb.ToolTip = $(if ($o[2] -eq 'gfv2') { 'Global Forests v2 only - the simHeaven forest pack is switched off' } elseif ($e.C -ieq 'europe') { 'simHeaven only - Global Forests v2 is cut away in these tiles' } else { 'simHeaven forests, Global Forests v2 in the rest of the tile' })
-            $rb.Add_Checked({ Request-Plan })
-            [void]$sp.Children.Add($rb); $rs[$o[0]] = $rb
-        }
-        if ($e.V -eq 'mixed') { $sp.ToolTip = 'mixed now: some simHeaven forest packs above, some below Global Forests v2' }
-        [void]$U.FsPanel.Children.Add($sp)
-        $FsBoxes[$e.C] = [pscustomobject]$rs
+        $cb = New-Object Windows.Controls.CheckBox; $cb.Content = $e.C; $cb.FontSize = 12.5; $cb.VerticalAlignment = 'Center'
+        $cb.Margin = [Windows.Thickness]::new(0, 0, 12, 0)
+        $cb.IsChecked = $(if ($e.V -eq 'simheaven') { $true } elseif ($e.V -eq 'gfv2') { $false } else { $null })
+        $cb.ToolTip = $(if ($e.V -eq 'mixed') { 'mixed now: some simHeaven forest packs above, some below Global Forests v2' } elseif ($e.C -ieq 'europe') { 'Ticked: simHeaven only. Not ticked: Global Forests v2 only.' } else { 'Ticked: simHeaven forests, Global Forests v2 in the rest of the tile. Not ticked: Global Forests v2 only.' })
+        $cb.Add_Click({ Request-Plan })
+        [void]$U.FsPanel.Children.Add($cb)
+        $FsBoxes[$e.C] = $cb
     }
 }
 function Set-SettingsFrom($s) {
@@ -632,7 +627,7 @@ function Set-SettingsFrom($s) {
     if ($hm.ContainsKey($h)) { $U[$hm[$h]].IsChecked = $true } else { $U.HOwn.IsChecked = $true; $U.HVal.Text = Fmt2 $h }
     $U.CbGf.Visibility = $(if ($s.GF.Count) { 'Visible' } else { 'Collapsed' }); $U.CbGf.IsChecked = [bool]$s.UseGF
     Build-FsPanel $s
-    $U.FsRow.Visibility = $(if ($s.FsCur -and $s.UseGF) { 'Visible' } else { 'Collapsed' })
+    Set-FsVis ([bool]($s.FsCur -and $s.UseGF))
     $U.GrpHedge.IsEnabled = $s.HasSh
     # hedges: the current choice; recommended only if nothing was applied yet
     $hc = if ($s.HasSh -and ($s.KnicksOn -or $s.Hedges -ne 'default' -or $s.N)) { $s.Hedges } elseif ($s.HasSh) { 'Knicks' } else { 'default' }
@@ -682,7 +677,7 @@ function Get-Chosen {
     $fsv = $null
     if ($U.FsRow.Visibility -eq 'Visible') {
         $fsv = [ordered]@{}
-        foreach ($k in @($FsBoxes.Keys)) { if ($FsBoxes[$k].Sh.IsChecked) { $fsv[$k] = 'simheaven' } elseif ($FsBoxes[$k].Gf.IsChecked) { $fsv[$k] = 'gfv2' } }
+        foreach ($k in @($FsBoxes.Keys)) { $fsc = $FsBoxes[$k].IsChecked; if ($fsc -eq $true) { $fsv[$k] = 'simheaven' } elseif ($fsc -eq $false) { $fsv[$k] = 'gfv2' } }
         if (-not $fsv.Count) { $fsv = $null }
     }
     return @{ Fac = [double]$fac; H = [double]$h; Hedges = $g; Countries = @($c); UseGf = [bool]$U.CbGf.IsChecked; ForestSrc = $fsv }
@@ -820,7 +815,11 @@ function Start-Update {
     $U.U1a.Text = '... Download'; $U.U2a.Text = '... Check'; $U.U3a.Text = '... Install'
     $U.U2b.Text = ''; $U.U3b.Text = $(if ($Installed) { 'runs the new setup, then starts again' } else { 'replaces the files of the tool, then starts again' })
     $U.UpdNewT.Text = "What's new in $v"
-    $body = (([string]$r.body) -split "`r?`n" | Where-Object { $_ -match '^\s*[-*] ' } | Select-Object -First 7 | ForEach-Object { ($Bul + '  ') + (($_ -replace '^\s*[-*]\s+', '') -replace '\*\*|`|\[([^\]]+)\]\([^)]+\)', '$1') }) -join "`n"
+    # only the bullets of the "New in ..." section (not the credits further down)
+    $bl = @(([string]$r.body) -split "`r?`n"); $ni = -1
+    for ($k = 0; $k -lt $bl.Count; $k++) { if ($bl[$k] -match '^\s*#+\s*New in') { $ni = $k; break } }
+    if ($ni -ge 0) { $bl = @($bl[($ni + 1)..($bl.Count - 1)]); $end = 0; while ($end -lt $bl.Count -and $bl[$end] -notmatch '^\s*#') { $end++ }; $bl = @($bl | Select-Object -First $end) }
+    $body = ($bl | Where-Object { $_ -match '^\s*[-*] ' } | Select-Object -First 7 | ForEach-Object { ($Bul + '  ') + (($_ -replace '^\s*[-*]\s+', '') -replace '\*\*|`|\[([^\]]+)\]\([^)]+\)', '$1') }) -join "`n"
     $U.UpdNew.Text = $(if ($body) { $body } else { 'See the changelog on GitHub.' })
     $U.BtUpdCancel.IsEnabled = $true; $U.BtUpdCancel.Content = 'Cancel'
     Show-Page 'Upd'; Set-NavEnabled $false
@@ -866,7 +865,8 @@ function Restart-Window {
 }
 function Install-Setup([string]$exe) {
     try {
-        $p = Start-Process -FilePath $exe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL') -PassThru
+        $script:SetupLog = Join-Path (Split-Path -Parent $exe) 'setup.log'
+        $p = Start-Process -FilePath $exe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', "/LOG=`"$($script:SetupLog)`"") -PassThru
         $null = $p.Handle      # keeps the handle, so the exit code can be read later
         $script:SetupProc = $p
     } catch { Fail-Update "The setup could not be started ($($_.Exception.Message)). Windows Smart App Control or your antivirus may block it."; return }
@@ -875,7 +875,18 @@ function Test-SetupDone {
     $p = $script:SetupProc; if (-not $p) { return }
     if (-not $p.HasExited) { return }
     $script:SetupProc = $null
-    if ($p.ExitCode -ne 0) { Fail-Update "The setup stopped (code $($p.ExitCode)). Windows Smart App Control or your antivirus may have blocked it."; return }
+    if ($p.ExitCode -ne 0) {
+        # keep the setup log next to tool.log and show its last error line
+        $why = ''; $keep = ''
+        try {
+            if ($script:State -and (Test-Path -LiteralPath $script:SetupLog)) {
+                $keep = Join-Path $script:State.TweakDir 'setup_update.log'; Copy-Item -LiteralPath $script:SetupLog -Destination $keep -Force
+                $e = @(Get-Content -LiteralPath $keep | Where-Object { $_ -match 'error|failed|abort|denied|in use' }) | Select-Object -Last 1
+                if ($e) { $why = "`n" + (($e -replace '^\S+\s+\S+\s+', '').Trim()) }
+            }
+        } catch { }
+        Fail-Update ("The setup could not finish (code $($p.ExitCode)).$why" + $(if ($keep) { "`nLog: $keep" } else { '' })); return
+    }
     $U.U3a.Text = "$([char]0x2713) Install"; Restart-Window
 }
 function Install-Zip([string]$zip) {
@@ -1000,7 +1011,7 @@ $U.NavLog.Add_Checked({ Show-Page 'Log' })
 foreach ($n in 'D10', 'D08', 'D07', 'D06', 'DOwn', 'H10', 'H08', 'H07', 'H06', 'HOwn', 'G0', 'G1', 'G2') { $U[$n].Add_Checked({ Request-Plan }) }
 $U.DVal.Add_GotFocus({ $U.DOwn.IsChecked = $true }); $U.HVal.Add_GotFocus({ $U.HOwn.IsChecked = $true })
 $U.DVal.Add_TextChanged({ Request-Plan }); $U.HVal.Add_TextChanged({ Request-Plan })
-$U.CbGf.Add_Click({ $U.FsRow.Visibility = $(if ($U.CbGf.IsChecked -and $script:State.FsCur) { 'Visible' } else { 'Collapsed' }); Request-Plan; Request-RecPlan })
+$U.CbGf.Add_Click({ Set-FsVis ([bool]($U.CbGf.IsChecked -and $script:State.FsCur)); Request-Plan; Request-RecPlan })
 
 $U.BtRecCust.Add_Click({ $U.NavSet.IsChecked = $true })
 $U.BtRecApply.Add_Click({ Run-Apply $null -Quick })
