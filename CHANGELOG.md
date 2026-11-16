@@ -1,10 +1,9 @@
 # Changelog
 
 ## 1.6.1
-- **Forests from simHeaven or Global Forests v2, per continent:** new choice when both are installed (Windows: Settings page, macOS/Linux: step 4). In Europe X-Plane shows only one of them per tile; on the other continents simHeaven X-WORLD Pro cuts away only its own forest areas, so Global Forests v2 fills the rest. For Global Forests v2 the tool switches the simHeaven forest pack of that continent off, *Restore original* switches it on again. *Status* shows the choice per continent.
-- Global Forests v2 listed with a full path outside `Custom Scenery` (e.g. Orbx Central) is found and shown, but not tweaked or moved.
-- **X-WORLD Pro found also when its packs are off** in `scenery_packs.ini`: the hedges are still read from them, so you can turn 06-extras1/07-extras2 off in X-Plane and keep the tool's hedges. *Check & repair* no longer rebuilds the hedge tiles without them.
-- README for setup installations; the setup can be built from the repository.
+- **Forests from simHeaven or Global Forests v2:** if both are installed, you choose per continent where the forests come from (Windows: Settings page, macOS/Linux: step 4). *Restore original* undoes it.
+- X-WORLD Pro hedges also work when the Pro packs are switched off in X-Plane.
+- Global Forests v2 installed outside `Custom Scenery` (e.g. by Orbx Central) is shown in *Status*. It is not tweaked.
 
 ## 1.6.0
 - **Windows: a window instead of the console.** All settings on one page with a live preview of what will change. The console menu stays (`Start_ForestTweak_Console.bat`).
