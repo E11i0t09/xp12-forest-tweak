@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 XP12 Forest Tweak - macOS / Linux version
-Version 1.6.0
+Version 1.6.1
 
 Denser forests and optionally smaller trees for X-Plane 12.
 Same logic and same backup log as the Windows (PowerShell) version, so a tweak made
@@ -64,7 +64,7 @@ import time
 from collections import Counter
 from decimal import Decimal, ROUND_HALF_UP
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 TESTED_XP = (12, 4)      # X-Plane version the tool was tested with
 REPO = "E11i0t09/xp12-forest-tweak"
 THRESHOLD = 3.1          # files with a smaller tree spacing are grass/shrubs/hedges -> kept
@@ -258,12 +258,40 @@ def find_gfv2(xp):
     return out
 
 
+def gfv2_outside(xp):
+    """Global Forests v2 folders listed with a full path in scenery_packs.ini outside Custom Scenery (e.g. Orbx
+    Central installs). Only reported: the tool does not tweak or move them."""
+    out = []
+    try:
+        lines, _nl = ini_read(xp)
+    except Exception:
+        lines = None
+    cs = os.path.normcase(os.path.abspath(os.path.join(xp, "Custom Scenery")))
+    for l in lines or []:
+        m = re.match(r"(?i)^SCENERY_PACK(?:_DISABLED)?\s+(.+?)\s*$", l)
+        if not m:
+            continue
+        p = m.group(1).rstrip("/\\")
+        name = re.split(r"[/\\]", p)[-1]
+        if not (re.match(r"(?i)^Global[ _-]?Forests", name) and re.search(r"(?i)v2", name)):
+            continue
+        if not (os.path.isabs(p) or re.match(r"^[A-Za-z]:[/\\]", p)):
+            continue
+        full = os.path.abspath(p)
+        if os.path.normcase(os.path.dirname(full)) != cs and p not in out:
+            out.append(p)
+    return out
+
+
 def get_targets(xp):
     default = os.path.join(xp, "Resources", "default scenery", "1200 forests")
     if not os.path.isdir(default):
         raise RuntimeError(f"Default forest folder not found: {default}")
     targets = [default]
     gf = find_gfv2(xp)
+    for g in gfv2_outside(xp):
+        say(f"  Global Forests v2 found outside Custom Scenery: {g}")
+        say("  It is not tweaked - only Global Forests v2 inside Custom Scenery can be tweaked.")
     if gf and ask_yes("  Global Forests v2 found. Tweak it too? [Y/n] "):
         targets += gf
     return targets, gf
@@ -2070,24 +2098,41 @@ def ini_packs(xp, lines):
     return out
 
 
-def hm_sources(xp):
-    """Enabled simHeaven packs with hedges, in scenery_packs.ini order: [(kind, dir with hedges, dir with tree rows, region)]."""
+def hm_sources_full(xp):
+    """simHeaven packs with hedges: enabled ones in scenery_packs.ini order, then X-WORLD Pro packs that are
+    disabled in scenery_packs.ini or not listed (Custom Scenery). The tool builds the Pro hedges itself and only
+    reads these files, so they work as a source also when they are switched off in X-Plane (e.g. to save FPS).
+    [(kind, dir with hedges, dir with tree rows, region, enabled)]"""
     lines, _nl = ini_read(xp)
     packs = ini_packs(xp, lines)
     by_name = {n.lower(): f for _on, f, n in packs}
-    out = []
+    out, later, seen = [], [], set()
     for on, full, name in packs:
-        if not on:
-            continue
         m = re.match(r"(?i)^simHeaven_X-WORLD-Pro_(.+?)-06-extras1$", name)
         if m:
+            if not os.path.isdir(full):
+                continue
+            seen.add(name.lower())
             n2 = name[:-len("06-extras1")] + "07-extras2"
-            out.append(("pro", full, by_name.get(n2.lower(), os.path.join(os.path.dirname(full), n2)), m.group(1)))
+            src = ("pro", full, by_name.get(n2.lower(), os.path.join(os.path.dirname(full), n2)), m.group(1), on)
+            (out if on else later).append(src)
             continue
         m = re.match(r"(?i)^simHeaven_X-World_(.+?)-4-extras$", name)
-        if m:
-            out.append(("free", full, full, m.group(1)))
-    return out
+        if m and on:
+            out.append(("free", full, full, m.group(1), True))
+    cs = os.path.join(xp, "Custom Scenery")
+    if os.path.isdir(cs):
+        for name in sorted(os.listdir(cs)):
+            m = re.match(r"(?i)^simHeaven_X-WORLD-Pro_(.+?)-06-extras1$", name)
+            if m and name.lower() not in seen and os.path.isdir(os.path.join(cs, name)):
+                n2 = name[:-len("06-extras1")] + "07-extras2"
+                later.append(("pro", os.path.join(cs, name), os.path.join(cs, n2), m.group(1), False))
+    return out + later
+
+
+def hm_sources(xp):
+    """[(kind, dir with hedges, dir with tree rows, region)], see hm_sources_full."""
+    return [x[:4] for x in hm_sources_full(xp)]
 
 
 def hm_count_tiles(d):
@@ -2104,17 +2149,20 @@ def hm_count_tiles(d):
 def hm_source_report(xp):
     """One line per simHeaven pack the hedges are read from (for Status and tool.log)."""
     return [f"{'X-WORLD Pro' if k == 'pro' else 'X-World free'} {r}: {d} ({hm_count_tiles(d)} tiles)"
+            + ("" if on else ", off in scenery_packs.ini (hedges are still read from it)")
             + ("" if k == "free" or os.path.isdir(d2) else ", tree rows pack not found")
-            for k, d, d2, r in hm_sources(xp)]
+            for k, d, d2, r, on in hm_sources_full(xp)]
 
 
 def hm_detect(xp):
     """{'pro': [regions], 'free': [regions], 'both': [regions with free and Pro on]}"""
-    src = hm_sources(xp)
-    pro = sorted({r for k, _a, _b, r in src if k == "pro"})
-    free = sorted({r for k, _a, _b, r in src if k == "free"})
-    both = [r for r in pro if r.lower() in [f.lower() for f in free]]
-    return {"pro": pro, "free": free, "both": both}
+    src = hm_sources_full(xp)
+    pro = sorted({r for k, _a, _b, r, _on in src if k == "pro"})
+    free = sorted({r for k, _a, _b, r, _on in src if k == "free"})
+    pro_on = sorted({r for k, _a, _b, r, on in src if k == "pro" and on})
+    pro_off = sorted({r for k, _a, _b, r, on in src if k == "pro" and not on})
+    both = [r for r in pro_on if r.lower() in [f.lower() for f in free]]
+    return {"pro": pro, "free": free, "both": both, "pro_off": pro_off}
 
 
 def hm_pro_tiles(xp):
@@ -2483,7 +2531,7 @@ def hedge_choice_state(xp, hstate):
 
 # ---------------------------------------------------------------- [1] choose settings
 def ask_spacing(current, tweaked):
-    say("  Step 1/3  Tree spacing")
+    say(f"  Step 1/{STEP_N[0]}  Tree spacing")
     say("  Lower = closer trees = denser forest.")
     say()
     for i, (name, v, note) in enumerate(PRESETS, 1):
@@ -2509,7 +2557,7 @@ def ask_spacing(current, tweaked):
 
 
 def ask_height(current, tweaked):
-    say("  Step 2/3  Tree height")
+    say(f"  Step 2/{STEP_N[0]}  Tree height")
     say("  Lower = smaller trees. Conifers shrink a bit less. 3D tree models included.")
     say()
     for i, (name, v, _note) in enumerate(HEIGHT_PRESETS, 1):
@@ -2536,7 +2584,7 @@ def ask_height(current, tweaked):
 
 
 def ask_hedges(current):
-    say("  Step 3/3  Hedges")
+    say(f"  Step 3/{STEP_N[0]}  Hedges")
     say("  How hedges and tree rows look. Official hedge maps add missing hedges.")
     say()
     say("    [1] Original          as simHeaven made them")
@@ -2551,6 +2599,235 @@ def ask_hedges(current):
         if v:
             return v
         warn("  Please choose 1, 2 or 3.")
+
+
+# ---------------------------------------------------------------- forests from simHeaven or Global Forests v2
+# Measured in the DSF files (sim/exclude_for, November 2026):
+# - Global Forests v2 cuts away the forests of all packs below it for the whole 1x1 degree tile, everywhere.
+# - simHeaven X-WORLD Pro Europe-10-forests (and free X-World Europe) does the same for the whole tile.
+# - X-WORLD Pro Africa, America, Asia ... -10-forests only cut away their own forest areas.
+# So per continent: simHeaven above Global Forests v2 = in Europe only simHeaven forests, elsewhere simHeaven
+# forests plus Global Forests v2 in the rest of the tile. "gfv2" = the simHeaven forest pack of that continent
+# is switched off (logged in ForestDensityTweak/forest_source.json, Restore original switches it on again).
+FS_FILE = "forest_source.json"
+FS_NAMES = {"simheaven": "simHeaven (OpenStreetMap)", "gfv2": "Global Forests v2 (satellite data)", "mixed": "mixed"}
+FS_SHORT = {"simheaven": "simHeaven", "gfv2": "Global Forests v2", "mixed": "mixed"}
+STEP_N = [3]
+
+
+def fs_pack_name(line):
+    m = re.match(r"(?i)^SCENERY_PACK(?:_DISABLED)?\s+(.+?)\s*$", line)
+    return re.split(r"[/\\]", m.group(1).rstrip("/\\"))[-1] if m else None
+
+
+def fs_in_cs(line):
+    """True for a scenery_packs.ini line of a folder in Custom Scenery (not a full path elsewhere)."""
+    return bool(re.match(r"(?i)^SCENERY_PACK(?:_DISABLED)?\s+Custom Scenery[/\\]", line))
+
+
+def fs_cont(name):
+    """Continent of a simHeaven forest pack ('Europe', 'Asia' ...) or None if it is none."""
+    m = re.match(r"(?i)^simHeaven_X-WORLD-Pro_(.+)-10-forests$", name) or re.match(r"(?i)^simHeaven_X-World_(.+?)-\d+-forests$", name)
+    return m.group(1) if m else None
+
+
+def fs_is_pack(name):
+    return fs_cont(name) is not None
+
+
+def fs_is_pro(name):
+    return bool(re.match(r"(?i)^simHeaven_X-WORLD-Pro_", name))
+
+
+def fs_logged(xp):
+    p = os.path.join(tweak_dir(xp), FS_FILE)
+    try:
+        return [n for n in json.load(open(p, encoding="utf-8")).get("off", []) if n]
+    except Exception:
+        return []
+
+
+def fs_text(d):
+    """{'Europe': 'simheaven', ...} -> short text."""
+    vals = set(d.values())
+    if len(vals) == 1:
+        return FS_NAMES[vals.pop()]
+    return ", ".join(f"{c} {FS_SHORT[v]}" for c, v in d.items())
+
+
+def fs_hint(cont, v):
+    if v == "mixed":
+        return "mixed (some simHeaven forest packs above, some below Global Forests v2)"
+    if v == "gfv2":
+        return "Global Forests v2 only"
+    return "simHeaven only" if cont.lower() == "europe" else "simHeaven + Global Forests v2 in the gaps"
+
+
+def forest_source(xp, gf):
+    """gf: Global Forests v2 folders in Custom Scenery the tool includes. -> {'packs': [(name, on, index)],
+    'gf': (name, index) or None, 'conts': {continent: 'simheaven' / 'gfv2' / 'mixed'} (empty: not both there),
+    'current': summary of conts or None, 'off': names the tool switched off}"""
+    o = {"packs": [], "gf": None, "conts": {}, "current": None, "off": fs_logged(xp)}
+    lines, _nl = ini_read(xp)
+    if lines is None or not gf:
+        return o
+    gf_names = [os.path.basename(g.rstrip("/\\")).lower() for g in gf]
+    for i, l in enumerate(lines):
+        name = fs_pack_name(l)
+        if not name:
+            continue
+        on = bool(re.match(r"(?i)^SCENERY_PACK\s", l))
+        if fs_is_pack(name):
+            o["packs"].append((name, on, i))
+        elif on and not o["gf"] and name.lower() in gf_names and fs_in_cs(l):
+            o["gf"] = (name, i)
+    if not o["gf"]:
+        return o
+    by = {}
+    for name, on, i in o["packs"]:
+        by.setdefault(fs_cont(name).lower(), []).append((name, on, i))
+    for key in sorted(by, key=lambda k: (k != "europe", k)):
+        ps = by[key]
+        # a continent counts only if one of its packs is on or was switched off by the tool
+        if not any(p[1] or p[0] in o["off"] for p in ps):
+            continue
+        on = [p for p in ps if p[1]]
+        wins = sum(1 for p in on if p[2] < o["gf"][1])
+        cont = fs_cont((on or ps)[0][0])
+        o["conts"][cont] = "gfv2" if not on or wins == 0 else ("simheaven" if wins == len(on) else "mixed")
+    if o["conts"]:
+        vals = set(o["conts"].values())
+        o["current"] = vals.pop() if len(vals) == 1 else "mixed"
+    return o
+
+
+def fs_want(fs, want):
+    """want: 'simheaven' / 'gfv2' (all continents), a dict or None -> dict for all continents of fs."""
+    if isinstance(want, dict):
+        return {c: want.get(c, want.get(c.lower(), v)) for c, v in fs["conts"].items()}
+    return {c: (want or v) for c, v in fs["conts"].items()}
+
+
+def fs_changes(fs, want):
+    """-> (packs to switch off, packs to switch on, Global Forests v2 has to move down).
+    Only continents whose wanted value differs from the current one are changed."""
+    want = fs_want(fs, want)
+    off, on = [], []
+    for c, v in want.items():
+        if v == fs["conts"].get(c):
+            continue
+        ps = [p for p in fs["packs"] if fs_cont(p[0]).lower() == c.lower()]
+        if v == "gfv2":
+            off += [p[0] for p in ps if p[1]]
+        elif not any(p[1] for p in ps):
+            # switch on what the tool switched off, else the X-WORLD Pro pack, else the free one
+            on += [p[0] for p in ps if p[0] in fs["off"]] or [p[0] for p in ps if fs_is_pro(p[0])] or [p[0] for p in ps]
+    w = {c.lower(): v for c, v in want.items()}
+    gi = fs["gf"][1] if fs["gf"] else -1
+    enabled = [p for p in fs["packs"] if (p[1] or p[0] in on) and p[0] not in off]
+    last = max([p[2] for p in enabled if w.get(fs_cont(p[0]).lower()) == "simheaven"], default=-1)
+    move = last > gi
+    if move:
+        # packs of Global Forests v2 continents that would end up above it are switched off
+        off += [p[0] for p in enabled if w.get(fs_cont(p[0]).lower()) == "gfv2" and p[2] < last]
+    return off, on, move
+
+
+def set_forest_source(xp, gf, want):
+    """True if scenery_packs.ini was changed."""
+    fs = forest_source(xp, gf)
+    if not fs["conts"]:
+        return False
+    w = fs_want(fs, want)
+    off, on, move = fs_changes(fs, w)
+    if not off and not on and not move:
+        return False
+    lines, nl = ini_read(xp)
+    for i, l in enumerate(lines):
+        name = fs_pack_name(l)
+        if not name:
+            continue
+        m_on = re.match(r"(?i)^SCENERY_PACK\s+(.+?)\s*$", l)
+        m_off = re.match(r"(?i)^SCENERY_PACK_DISABLED\s+(.+?)\s*$", l)
+        if name in off and m_on:
+            lines[i] = "SCENERY_PACK_DISABLED " + m_on.group(1)
+        elif name in on and m_off:
+            lines[i] = "SCENERY_PACK " + m_off.group(1)
+    if move:
+        # Global Forests v2 below the last enabled simHeaven forest pack of the continents that want simHeaven
+        simc = {c.lower() for c, v in w.items() if v == "simheaven"}
+        gi, last = -1, -1
+        for i, l in enumerate(lines):
+            name = fs_pack_name(l)
+            if not name:
+                continue
+            if name.lower() == fs["gf"][0].lower() and gi < 0 and fs_in_cs(l):
+                gi = i
+            if fs_is_pack(name) and fs_cont(name).lower() in simc and re.match(r"(?i)^SCENERY_PACK\s", l):
+                last = i
+        if gi >= 0 and last > gi:
+            lines.insert(last, lines.pop(gi))
+    logged = [n for n in fs["off"] if n not in on] + [n for n in off if n not in fs["off"]]
+    fp = os.path.join(tweak_dir(xp), FS_FILE)
+    if logged:
+        os.makedirs(tweak_dir(xp), exist_ok=True)
+        write_bytes(fp, json.dumps({"off": logged}).encode("utf-8"))
+    elif os.path.exists(fp):
+        os.remove(fp)
+    ini_write(xp, lines, nl)
+    tlog(f"forests from: {fs_text(fs['conts'])} -> {fs_text(w)}; off {', '.join(off) or '-'}; on {', '.join(on) or '-'}"
+         + ("; Global Forests v2 moved down" if move else ""))
+    return True
+
+
+def undo_forest_source(xp):
+    """Restore original: switches the simHeaven forest packs on again that the tool switched off."""
+    fp = os.path.join(tweak_dir(xp), FS_FILE)
+    if not os.path.exists(fp):
+        return False
+    names = fs_logged(xp)
+    lines, nl = ini_read(xp)
+    if lines is not None and names:
+        for i, l in enumerate(lines):
+            name = fs_pack_name(l)
+            m = re.match(r"(?i)^SCENERY_PACK_DISABLED\s+(.+?)\s*$", l)
+            if name and name in names and m:
+                lines[i] = "SCENERY_PACK " + m.group(1)
+        ini_write(xp, lines, nl)
+    os.remove(fp)
+    tlog(f"forests from: simHeaven forest packs switched on again ({', '.join(names)})")
+    return True
+
+
+def ask_forest_source(current):
+    """current: {continent: value} -> wanted {continent: 'simheaven' / 'gfv2'}"""
+    want = dict(current)
+    conts = list(want)
+    say(f"  Step 4/{STEP_N[0]}  Forests from")
+    say("  simHeaven: forests from OpenStreetMap - exact outlines, also parks, gardens, cemeteries,")
+    say("             vineyards. Europe: only simHeaven forests in the tile, gaps where nothing is mapped.")
+    say("             Other continents: simHeaven cuts away only its own forest areas, Global Forests v2")
+    say("             fills the rest of the tile.")
+    say("  Global Forests v2: forests from satellite data, also in remote areas, no simHeaven park and")
+    say("             garden trees. The simHeaven forest pack of that continent is switched off.")
+    while True:
+        say()
+        for n, c in enumerate(conts, 1):
+            say(f"    [{n}] {c:<18} {fs_hint(c, want[c])}")
+        say()
+        say("    Number = switch that continent   [S] all simHeaven   [G] all Global Forests v2")
+        a = input("  Choose (Enter = done): ").strip().lower()
+        if not a:
+            return want
+        if a == "s":
+            want = {c: "simheaven" for c in conts}
+        elif a == "g":
+            want = {c: "gfv2" for c in conts}
+        elif a.isdigit() and 1 <= int(a) <= len(conts):
+            c = conts[int(a) - 1]
+            want[c] = "gfv2" if want[c] == "simheaven" else "simheaven"
+        else:
+            warn(f"  Please type 1-{len(conts)}, S, G or press Enter.")
 
 
 def pro_countries(xp):
@@ -2634,6 +2911,11 @@ def choose_settings(xp, targets, quick=False):
     cur_c = info["countries"] if info else []
     has_gf = any(rel(xp, t).startswith("Custom Scenery/") for t in targets)
     want_h, want_c = hchoice, cur_c
+    gf_t = [t for t in targets if rel(xp, t).startswith("Custom Scenery/")]
+    fs = forest_source(xp, gf_t)
+    fs_cur = dict(fs["conts"])
+    want_fs = dict(fs_cur)
+    STEP_N[0] = 4 if fs_cur else 3
     if quick:
         say()
         say("  Recommended setup: tree spacing Dense (0.7), tree height Smaller (0.7)"
@@ -2659,8 +2941,14 @@ def choose_settings(xp, targets, quick=False):
             if det["pro"] and want_h != "default":
                 want_c = ask_countries(xp, cur_c)
         else:
-            say("  Step 3/3  Hedges   skipped - simHeaven X-World not installed")
+            say(f"  Step 3/{STEP_N[0]}  Hedges   skipped - simHeaven X-World not installed")
+        if fs_cur:
+            say()
+            say()
+            want_fs = ask_forest_source(fs_cur)
     hp = "realistic" if hf < 1.0 else "uniform"
+    fs_off, fs_on, fs_move = fs_changes(fs, want_fs) if fs_cur else ([], [], False)
+    fs_change = bool(fs_off or fs_on or fs_move)
     # summary
     same = (fac, hf, hp) == (cur_x, cur_h, cur_hp) or (fac, hf) == (cur_x, cur_h) == (1.0, 1.0)
     rebuild = tweaked and (not same or st["n_old"] > 0)       # restore first, then apply the new values
@@ -2705,6 +2993,8 @@ def choose_settings(xp, targets, quick=False):
         if det["pro"] and overlay_on:
             names = "all" if "all" in want_c else ", ".join(n for k, n, _r in COUNTRIES if k in want_c) or "none"
             say(f"  Countries {names} (X-WORLD Pro)")
+    if fs_cur:
+        say(f"  Forests from  {fs_text(fs_cur)}" + (f"  ->  {fs_text(want_fs)}" if fs_change else "  (unchanged)"))
     say()
     say("  What is changed")
     if forest_change:
@@ -2729,7 +3019,14 @@ def choose_settings(xp, targets, quick=False):
         say(f"    {len(hfiles):>6} free X-World hedge files")
     if hedge_change and not overlay_on and (k_on or sh_info(xp)):
         say("         2 tweak folders     removed")
-    if not forest_change and not hedge_change:
+    if fs_change:
+        if fs_off:
+            say(f"    {len(fs_off):>6} simHeaven forest packs switched off in scenery_packs.ini (backup kept)")
+        if fs_on:
+            say(f"    {len(fs_on):>6} simHeaven forest packs switched on in scenery_packs.ini (backup kept)")
+        if fs_move:
+            say("         1 Global Forests v2 moved below the simHeaven forest packs (backup kept)")
+    if not forest_change and not hedge_change and not fs_change:
         say("    nothing")
         return
     need = 0
@@ -2748,7 +3045,8 @@ def choose_settings(xp, targets, quick=False):
     if not ask_yes("  Apply now? [Y/n] "):
         say("  Cancelled - nothing was changed.")
         return
-    tlog(f"choose: {now} -> spacing {fac} height {hf} {hp}; hedges {hchoice} -> {want_h}; countries {' '.join(want_c)}")
+    tlog(f"choose: {now} -> spacing {fac} height {hf} {hp}; hedges {hchoice} -> {want_h}; countries {' '.join(want_c)}"
+         + (f"; forests from {fs_text(fs_cur)} -> {fs_text(want_fs)}" if fs_cur else ""))
     ok = True
     say()
     if forest_change:
@@ -2783,6 +3081,8 @@ def choose_settings(xp, targets, quick=False):
             sh_remove(xp)
             knick_remove(xp)
             say("  Hedge overlay and tweak library removed.", C_GREEN)
+    if ok and fs_change and set_forest_source(xp, gf_t, want_fs):
+        say(f"  Forests from: {fs_text(want_fs)}", C_GREEN)
     if ok:
         say()
         say("  Done. Start X-Plane now.   [Q] Quit", C_GREEN)
@@ -2804,6 +3104,8 @@ def restore_all(xp, targets):
         sh_remove(xp)
         knick_remove(xp)
         say("  Knicks removed.", C_GREEN)
+    if undo_forest_source(xp):
+        say("  simHeaven forest packs switched on again.", C_GREEN)
     if ok:
         say()
         say("  Done! You can start X-Plane now. Type Q and press Enter to close this window.", C_GREEN)
@@ -2835,6 +3137,16 @@ def show_status(xp, targets):
         say("                         " + line)
     if det["both"]:
         warn(f"  Free X-World and X-WORLD Pro are both on for {', '.join(det['both'])} - Choose settings can turn the free packs off")
+    if det["pro_off"]:
+        say(f"                         X-WORLD Pro hedges ({', '.join(det['pro_off'])}): the pack is off in X-Plane, the tool still builds its hedges from it")
+    fs = forest_source(xp, [t for t in targets if rel(xp, t).startswith("Custom Scenery/")])
+    if fs["conts"]:
+        say("  Forests from         : " + ", ".join(f"{c} {FS_SHORT[v]}" for c, v in fs["conts"].items()))
+        say("                         Europe: only one of them per tile. Other continents: simHeaven cuts away only")
+        say("                         its own forest areas. Change it in Choose settings.")
+    for g in gfv2_outside(xp):
+        say(f"  Global Forests v2    : {g} (outside Custom Scenery, listed in scenery_packs.ini)")
+        say("                         found, but not tweaked and not moved by the tool")
     if knick_info(xp)[0]:
         say(f"  Hedges               : {CHOICE_NAMES[hedge_choice_state(xp, hstate)]}")
         info = hm_info(xp)
