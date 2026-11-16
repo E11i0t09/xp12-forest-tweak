@@ -1,6 +1,6 @@
 <#
   XP12 Forest Tweak  -  Windows window
-  Version 1.6.0 (2026-11-12)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.6.1 (2026-11-13)   https://github.com/E11i0t09/xp12-forest-tweak
 
   The window for XP12_ForestTweak.ps1. All the work is done by the functions of XP12_ForestTweak.ps1
   (the same as in the console menu); this file only shows them in a window:
@@ -20,7 +20,7 @@ param([string]$XPlane = '', [switch]$UninstallRestore)
 $ErrorActionPreference = 'Stop'
 $Here = $PSScriptRoot
 $Core = Join-Path $Here 'XP12_ForestTweak.ps1'
-$GuiVersion = '1.6.0'
+$GuiVersion = '1.6.1'
 $Repo = 'E11i0t09/xp12-forest-tweak'
 $Dot = [string][char]0xB7; $Bul = [string][char]0x2022      # middle dot and bullet (the file stays plain ASCII)
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
@@ -85,6 +85,7 @@ function global:Get-GuiState {
     $old = $ki.On -and (($info -and $info.Version -ne $Version) -or (Get-KnickLibVersion $xp) -ne $Version)
     $sync.Capture = New-Object System.Collections.ArrayList; $sync.CapPart = ''
     try { Show-Status $xp $targets } finally { $lines = @($sync.Capture); $sync.Capture = $null }
+    $fsx = Get-ForestSource $xp @($targets | Where-Object { (Rel $xp $_) -match '^Custom Scenery' })
     [pscustomobject]@{
         Version = $Version; XP = $xp; XPVer = $ver[1]; TestedXP = $TestedXP; Off = $off; TweakDir = (Get-TweakDir $xp)
         X = $st.X; H = $st.H; N = $st.N; NOrig = $st.NOrig; NReset = $st.NReset; NOld = $st.NOld; Files = $st.Files
@@ -92,6 +93,7 @@ function global:Get-GuiState {
         Pro = @($det.Pro); Free = @($det.Free); Both = @($det.Both); ProCountries = $pc; ProAll = $proAll
         GF = @($gf | ForEach-Object { Split-Path -Leaf $_ }); UseGF = $global:useGf
         Hint = $(if ($off) { '' } else { Get-HedgeHint $xp }); Veg = (Get-VegSlider $xp); Status = $lines
+        ProOff = @($det.ProOff); FsCur = $fsx.Current; FsConts = @($fsx.Conts.Keys | ForEach-Object { [pscustomobject]@{ C = [string]$_; V = [string]$fsx.Conts[$_] } })
         MinFac = $MinFac; MinHeight = $MinHeight
     }
 }
@@ -281,8 +283,10 @@ $Xaml = @'
         <StackPanel DockPanel.Dock="Top">
           <TextBlock Style="{StaticResource H2}" Text="Settings"/>
           <Border Style="{StaticResource Group}"><StackPanel>
-            <DockPanel><CheckBox x:Name="CbGf" DockPanel.Dock="Right" Content="Include Global Forests v2" FontSize="12.5" Margin="0" Visibility="Collapsed"/>
-              <TextBlock Style="{StaticResource H3}" Text="Tree spacing"/></DockPanel>
+            <DockPanel><StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                <CheckBox x:Name="CbGf" Content="Include Global Forests v2" FontSize="12.5" Margin="0" VerticalAlignment="Center" Visibility="Collapsed"/>
+              </StackPanel>
+              <TextBlock Style="{StaticResource H3}" Text="Tree spacing" VerticalAlignment="Center"/></DockPanel>
             <UniformGrid Columns="5">
               <RadioButton x:Name="D10" Style="{StaticResource Opt}" GroupName="d"><StackPanel><TextBlock FontWeight="SemiBold" Text="Original"/><TextBlock Style="{StaticResource Small}" Text="as in X-Plane"/></StackPanel></RadioButton>
               <RadioButton x:Name="D08" Style="{StaticResource Opt}" GroupName="d"><StackPanel><TextBlock FontWeight="SemiBold" Text="Natural"/><TextBlock Style="{StaticResource Small}" Text="about 1.5x trees"/></StackPanel></RadioButton>
@@ -291,6 +295,12 @@ $Xaml = @'
               <RadioButton x:Name="DOwn" Style="{StaticResource Opt}" GroupName="d" Margin="0"><StackPanel><TextBlock FontWeight="SemiBold" Text="Own value"/><TextBox x:Name="DVal" Width="52" HorizontalAlignment="Left" Margin="0,2,0,0" Text="0.65"/></StackPanel></RadioButton>
             </UniformGrid>
             <TextBlock x:Name="DHint" Style="{StaticResource Small}" Margin="0,5,0,0" Text="More trees = more GPU load. &#x2605; = recommended"/>
+            <StackPanel x:Name="FsRow" Visibility="Collapsed" Margin="0,10,0,0"
+              ToolTip="simHeaven: forests from OpenStreetMap - exact outlines, also parks, gardens, cemeteries, vineyards.&#10;Global Forests v2: forests from satellite data, also in remote areas. The simHeaven forest pack of that continent is switched off (Restore original switches it on again).&#10;Europe: simHeaven and Global Forests v2 both cut away the forests below them for the whole 1x1 degree tile - only one of them is shown.&#10;Other continents: simHeaven cuts away only its own forest areas, so Global Forests v2 fills the rest of the tile.">
+              <TextBlock Style="{StaticResource H3}" Text="Forests from"/>
+              <WrapPanel x:Name="FsPanel" Margin="0,2,0,0"/>
+              <TextBlock x:Name="FsHint" Style="{StaticResource Small}" Margin="0,3,0,0" Text="Europe: only one of them per tile. Other continents: simHeaven + Global Forests v2 in the gaps."/>
+            </StackPanel>
           </StackPanel></Border>
           <Border Style="{StaticResource Group}"><StackPanel>
             <TextBlock Style="{StaticResource H3}" Text="Tree height"/>
@@ -552,11 +562,13 @@ function Set-State($s) {
     Add-Row $U.RecGrid 'Hedges' $(if ($s.HasSh) { 'Green hedges + hedgebanks' } else { '- (simHeaven X-World not found)' })
     if ($s.Pro.Count -and $s.ProCountries.Count) { Add-Row $U.RecGrid 'Pro countries' ((@($s.ProCountries | ForEach-Object { $_.Name })) -join ', ') }
     if ($s.GF.Count) { Add-Row $U.RecGrid 'Global Forests v2' $(if ($s.UseGF) { 'included' } else { 'not included (Settings)' }) }
+    if ($s.FsConts.Count -and $s.UseGF) { Add-Row $U.RecGrid 'Forests from' "unchanged: $((@($s.FsConts | ForEach-Object { "$($_.C) $(@{ simheaven = 'simHeaven'; gfv2 = 'GFv2'; mixed = 'mixed' }[$_.V])" })) -join ', ') (Settings)" }
     $U.RecNow.Text = Get-NowText $s
     $notes = @()
     if ($null -ne $s.Veg -and $s.Veg -lt 4) { $notes += 'The vegetation slider in X-Plane is not at maximum - set it to maximum (Settings > Graphics) for the full effect.' }
     if ($s.XPVer -and $s.TestedXP -and -not $s.XPVer.StartsWith($s.TestedXP)) { $notes += "Tested with X-Plane $($s.TestedXP).x, you have $($s.XPVer)." }
     if ($s.Both.Count) { $notes += "Free X-World and X-WORLD Pro are both on for $($s.Both -join ', ') - Apply offers to turn the free packs off." }
+    if ($s.ProOff.Count) { $notes += "X-WORLD Pro hedge pack (06-extras1) is off in X-Plane - fine, the tool still builds its hedges from it." }
     $U.RecNote.Text = $notes -join "`n"; $U.RecNote.Visibility = $(if ($notes.Count) { 'Visible' } else { 'Collapsed' })
     # banners
     $re = (-not $s.Off) -and (($s.N -and $s.NOld) -or $s.OverlayOld) -and -not $script:ReLater
@@ -588,6 +600,30 @@ function Set-State($s) {
 # ---------------------------------------------------------------- settings page
 $script:Loading = $false
 $CountryBoxes = @{}
+$FsBoxes = [ordered]@{}
+function Build-FsPanel($s) {
+    # one row per continent: name, simHeaven / GFv2 (nothing checked = mixed, stays as it is)
+    $U.FsPanel.Children.Clear(); $FsBoxes.Clear()
+    $opt = $W.FindResource('Opt')
+    foreach ($e in @($s.FsConts)) {
+        $sp = New-Object Windows.Controls.StackPanel; $sp.Orientation = 'Horizontal'; $sp.Margin = [Windows.Thickness]::new(0, 4, 18, 0)
+        $tb = New-Object Windows.Controls.TextBlock; $tb.Text = $e.C; $tb.MinWidth = 92; $tb.VerticalAlignment = 'Center'; $tb.FontSize = 12.5
+        [void]$sp.Children.Add($tb)
+        $rs = @{}
+        foreach ($o in @(@('Sh', 'simHeaven', 'simheaven'), @('Gf', 'GFv2', 'gfv2'))) {
+            $rb = New-Object Windows.Controls.RadioButton; $rb.Style = $opt; $rb.GroupName = 'fs_' + $e.C
+            $t = New-Object Windows.Controls.TextBlock; $t.Text = $o[1]; $t.FontSize = 12.5; $rb.Content = $t
+            if ($o[0] -eq 'Gf') { $rb.Margin = [Windows.Thickness]::new(0) }
+            $rb.IsChecked = ($e.V -eq $o[2])
+            $rb.ToolTip = $(if ($o[2] -eq 'gfv2') { 'Global Forests v2 only - the simHeaven forest pack is switched off' } elseif ($e.C -ieq 'europe') { 'simHeaven only - Global Forests v2 is cut away in these tiles' } else { 'simHeaven forests, Global Forests v2 in the rest of the tile' })
+            $rb.Add_Checked({ Request-Plan })
+            [void]$sp.Children.Add($rb); $rs[$o[0]] = $rb
+        }
+        if ($e.V -eq 'mixed') { $sp.ToolTip = 'mixed now: some simHeaven forest packs above, some below Global Forests v2' }
+        [void]$U.FsPanel.Children.Add($sp)
+        $FsBoxes[$e.C] = [pscustomobject]$rs
+    }
+}
 function Set-SettingsFrom($s) {
     $script:Loading = $true
     $x = if ($s.N) { [double]$s.X } else { 0.7 }; $h = if ($s.N) { [double]$s.H } else { 0.7 }
@@ -595,6 +631,8 @@ function Set-SettingsFrom($s) {
     if ($dm.ContainsKey($x)) { $U[$dm[$x]].IsChecked = $true } else { $U.DOwn.IsChecked = $true; $U.DVal.Text = Fmt2 $x }
     if ($hm.ContainsKey($h)) { $U[$hm[$h]].IsChecked = $true } else { $U.HOwn.IsChecked = $true; $U.HVal.Text = Fmt2 $h }
     $U.CbGf.Visibility = $(if ($s.GF.Count) { 'Visible' } else { 'Collapsed' }); $U.CbGf.IsChecked = [bool]$s.UseGF
+    Build-FsPanel $s
+    $U.FsRow.Visibility = $(if ($s.FsCur -and $s.UseGF) { 'Visible' } else { 'Collapsed' })
     $U.GrpHedge.IsEnabled = $s.HasSh
     # hedges: the current choice; recommended only if nothing was applied yet
     $hc = if ($s.HasSh -and ($s.KnicksOn -or $s.Hedges -ne 'default' -or $s.N)) { $s.Hedges } elseif ($s.HasSh) { 'Knicks' } else { 'default' }
@@ -641,7 +679,13 @@ function Get-Chosen {
     $c = @()
     if ($CountryBoxes.ContainsKey('all') -and $CountryBoxes['all'].IsChecked) { $c = @('all') }
     else { foreach ($k in $CountryBoxes.Keys) { if ($k -ne 'all' -and $CountryBoxes[$k].IsChecked) { $c += $k } } }
-    return @{ Fac = [double]$fac; H = [double]$h; Hedges = $g; Countries = @($c); UseGf = [bool]$U.CbGf.IsChecked }
+    $fsv = $null
+    if ($U.FsRow.Visibility -eq 'Visible') {
+        $fsv = [ordered]@{}
+        foreach ($k in @($FsBoxes.Keys)) { if ($FsBoxes[$k].Sh.IsChecked) { $fsv[$k] = 'simheaven' } elseif ($FsBoxes[$k].Gf.IsChecked) { $fsv[$k] = 'gfv2' } }
+        if (-not $fsv.Count) { $fsv = $null }
+    }
+    return @{ Fac = [double]$fac; H = [double]$h; Hedges = $g; Countries = @($c); UseGf = [bool]$U.CbGf.IsChecked; ForestSrc = $fsv }
 }
 
 # live preview: worked out by the tool itself (same numbers as its summary), a moment after the last change
@@ -663,6 +707,7 @@ function Format-Plan($p) {
     if ($p.Forest) { $a += "$($p.Files) forest files" }
     if ($p.Hedge -and $p.Tiles) { $a += $(if ($p.NewTiles) { "$($p.NewTiles) hedge tiles to build" } else { 'hedge library' }) }
     elseif ($p.Hedge) { $a += 'hedges' }
+    if ($p.FsChange) { $a += $(if ($p.FsOff -or $p.FsOn) { "$($p.FsOff + $p.FsOn) simHeaven forest pack$(if ($p.FsOff + $p.FsOn -ne 1) { 's' })" } else { 'order of Global Forests v2' }) }
     return "Will change: $($a -join " $Dot ") $Dot $($p.TimeText) $Dot up to $($p.SizeText)"
 }
 
@@ -955,7 +1000,7 @@ $U.NavLog.Add_Checked({ Show-Page 'Log' })
 foreach ($n in 'D10', 'D08', 'D07', 'D06', 'DOwn', 'H10', 'H08', 'H07', 'H06', 'HOwn', 'G0', 'G1', 'G2') { $U[$n].Add_Checked({ Request-Plan }) }
 $U.DVal.Add_GotFocus({ $U.DOwn.IsChecked = $true }); $U.HVal.Add_GotFocus({ $U.HOwn.IsChecked = $true })
 $U.DVal.Add_TextChanged({ Request-Plan }); $U.HVal.Add_TextChanged({ Request-Plan })
-$U.CbGf.Add_Click({ Request-Plan; Request-RecPlan })
+$U.CbGf.Add_Click({ $U.FsRow.Visibility = $(if ($U.CbGf.IsChecked -and $script:State.FsCur) { 'Visible' } else { 'Collapsed' }); Request-Plan; Request-RecPlan })
 
 $U.BtRecCust.Add_Click({ $U.NavSet.IsChecked = $true })
 $U.BtRecApply.Add_Click({ Run-Apply $null -Quick })
@@ -966,7 +1011,7 @@ $U.BtSetApply.Add_Click({
 })
 $U.BtReApply.Add_Click({
     $s = $script:State
-    Run-Apply @{ Fac = [double]$s.X; H = [double]$s.H; Hedges = $s.Hedges; Countries = @($s.Countries); UseGf = [bool]$s.UseGF }
+    Run-Apply @{ Fac = [double]$s.X; H = [double]$s.H; Hedges = $s.Hedges; Countries = @($s.Countries); UseGf = [bool]$s.UseGF; ForestSrc = $null }
 })
 $U.BtReLater.Add_Click({ $script:ReLater = $true; $U.BnRe.Visibility = 'Collapsed' })
 $U.BtReset.Add_Click({ [void](Start-Work 'Tweaking the reset files again' (Wrap 'Invoke-StartOffers $xp $targets (Get-ForestState $xp $targets)') $null $OnState -AutoYes) })

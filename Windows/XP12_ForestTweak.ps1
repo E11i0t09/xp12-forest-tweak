@@ -1,6 +1,6 @@
 <#
   XP12 Forest Tweak  -  Windows
-  Version 1.6.0 (2026-11-12)   https://github.com/E11i0t09/xp12-forest-tweak
+  Version 1.6.1 (2026-11-13)   https://github.com/E11i0t09/xp12-forest-tweak
 
   Denser forests and optionally smaller trees for X-Plane 12 - for vanilla X-Plane,
   simHeaven X-World and Global Forests v2 (one tool for all; if Global Forests v2 is
@@ -50,7 +50,7 @@
 #>
 
 $ErrorActionPreference = 'Stop'
-$Version    = '1.6.0'
+$Version    = '1.6.1'
 $TestedXP   = '12.4'          # X-Plane version the tool was tested with
 $Repo       = 'E11i0t09/xp12-forest-tweak'
 $Threshold  = 3.1             # files with a smaller tree spacing are grass/shrubs/hedges -> kept
@@ -82,6 +82,7 @@ $ShrubRx    = [regex]'shrub|_shr_|cact|orch|fruit|agave|yucca'
 $OtherRx    = [regex]'(?i)true[ _-]?earth|forest|trees|vegetation'
 $Sep        = [IO.Path]::DirectorySeparatorChar
 $script:ToolLog = $null
+$script:StepN = 3
 
 function Fmt([double]$v) { $v.ToString('0.###', $Inv) }
 function Rnd([double]$v, [int]$d) { [Math]::Round($v, $d, [MidpointRounding]::AwayFromZero) }
@@ -648,11 +649,36 @@ function Find-GFv2($xp) {
       Where-Object { $_.Name -match '^Global[ _-]?Forests' -and $_.Name -match 'v2' } | ForEach-Object { $_.FullName })
 }
 
+function Get-GfOutside($xp) {
+    # Global Forests v2 folders listed with a full path in scenery_packs.ini outside Custom Scenery (e.g. Orbx
+    # Central installs). Only reported: the tool does not tweak or move them.
+    $out = @()
+    $ini = $null; try { $ini = Read-Ini $xp } catch { }
+    if (-not $ini) { return $out }
+    $cs = [IO.Path]::GetFullPath((Join-Path $xp 'Custom Scenery')).TrimEnd('\', '/')
+    foreach ($l in $ini.Lines) {
+        if ($l -notmatch '(?i)^SCENERY_PACK(?:_DISABLED)?\s+(.+?)\s*$') { continue }
+        $p = $Matches[1].TrimEnd('/', '\')
+        $name = @($p -split '[/\\]')[-1]
+        if ($name -notmatch '(?i)^Global[ _-]?Forests' -or $name -notmatch '(?i)v2') { continue }
+        if ($p -notmatch '^([A-Za-z]:[/\\]|[/\\])') { continue }
+        $parent = $null; try { $parent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($p)).TrimEnd('\', '/') } catch { }
+        if ($parent -and $parent -ine $cs -and $out -notcontains $p) { $out += $p }
+    }
+    return $out
+}
+
 function Get-Targets($xp, $gf, $Include = $null) {
     # $Include: $true / $false from the window, $null = ask (console)
     $def = Join-Path $xp 'Resources/default scenery/1200 forests'
     if (-not (Test-Path -LiteralPath $def)) { throw "Default forest folder not found: $def" }
     $t = @((Get-Item -LiteralPath $def).FullName)
+    if ($null -eq $Include) {
+        foreach ($g in @(Get-GfOutside $xp)) {
+            Write-Host "  Global Forests v2 found outside Custom Scenery: $g"
+            Write-Host '  It is not tweaked - only Global Forests v2 inside Custom Scenery can be tweaked.'
+        }
+    }
     if ($gf.Count -and $(if ($null -ne $Include) { [bool]$Include } else { Ask-Yes '  Global Forests v2 found. Tweak it too? [Y/n]' })) { $t += $gf }
     return $t
 }
@@ -1500,22 +1526,38 @@ function Get-IniPacks($xp, $lines) {
     return ,$out
 }
 function Get-HmSources($xp) {
-    # enabled simHeaven packs with hedges, in scenery_packs.ini order
+    # simHeaven packs with hedges: enabled ones in scenery_packs.ini order, then X-WORLD Pro packs that are
+    # disabled in scenery_packs.ini or not listed (Custom Scenery). The tool builds the Pro hedges itself and only
+    # reads these files, so they work as a source also when they are switched off in X-Plane (e.g. to save FPS).
+    # On = enabled in scenery_packs.ini.
     $ini = Read-Ini $xp
     $out = @()
-    if (-not $ini) { return ,$out }
-    $packs = Get-IniPacks $xp $ini.Lines
+    $packs = if ($ini) { Get-IniPacks $xp $ini.Lines } else { @() }
     $byName = @{}; foreach ($k in $packs) { $byName[$k.Name.ToLower()] = $k.Full }
+    $seen = @{}
+    $later = @()
     foreach ($k in $packs) {
-        if (-not $k.On) { continue }
         if ($k.Name -match '(?i)^simHeaven_X-WORLD-Pro_(.+?)-06-extras1$') {
             $r = $Matches[1]; $n2 = $k.Name.Substring(0, $k.Name.Length - 10) + '07-extras2'
             $d2 = if ($byName.ContainsKey($n2.ToLower())) { $byName[$n2.ToLower()] } else { Join-Path (Split-Path -Parent $k.Full) $n2 }
-            $out += [pscustomobject]@{ Kind = 'pro'; D = $k.Full; D2 = $d2; Region = $r }
-        } elseif ($k.Name -match '(?i)^simHeaven_X-World_(.+?)-4-extras$') {
-            $out += [pscustomobject]@{ Kind = 'free'; D = $k.Full; D2 = $k.Full; Region = $Matches[1] }
+            if (-not (Test-Path -LiteralPath $k.Full)) { continue }
+            $seen[$k.Name.ToLower()] = $true
+            $o = [pscustomobject]@{ Kind = 'pro'; D = $k.Full; D2 = $d2; Region = $r; On = $k.On; On2 = $(if ($byName.ContainsKey($n2.ToLower())) { [bool]@($packs | Where-Object { $_.Name -ieq $n2 -and $_.On }).Count } else { $false }) }
+            if ($k.On) { $out += $o } else { $later += $o }
+        } elseif ($k.On -and $k.Name -match '(?i)^simHeaven_X-World_(.+?)-4-extras$') {
+            $out += [pscustomobject]@{ Kind = 'free'; D = $k.Full; D2 = $k.Full; Region = $Matches[1]; On = $true; On2 = $true }
         }
     }
+    $cs = Join-Path $xp 'Custom Scenery'
+    if (Test-Path -LiteralPath $cs) {
+        foreach ($d in @(Get-ChildItem -LiteralPath $cs -Directory -Filter 'simHeaven_X-WORLD-Pro_*-06-extras1' -ErrorAction SilentlyContinue | Sort-Object Name)) {
+            if ($seen.ContainsKey($d.Name.ToLower())) { continue }
+            if (-not ($d.Name -match '(?i)^simHeaven_X-WORLD-Pro_(.+?)-06-extras1$')) { continue }
+            $r = $Matches[1]; $n2 = $d.Name.Substring(0, $d.Name.Length - 10) + '07-extras2'
+            $later += [pscustomobject]@{ Kind = 'pro'; D = $d.FullName; D2 = (Join-Path $cs $n2); Region = $r; On = $false; On2 = $false }
+        }
+    }
+    $out += $later
     return ,$out
 }
 function Get-HmCountTiles($d) {
@@ -1529,6 +1571,7 @@ function Get-HmSourceReport($xp) {
     foreach ($src in (Get-HmSources $xp)) {
         $name = if ($src.Kind -eq 'pro') { 'X-WORLD Pro' } else { 'X-World free' }
         $l = "$name $($src.Region): $($src.D) ($(Get-HmCountTiles $src.D) tiles)"
+        if (-not $src.On) { $l += ', off in scenery_packs.ini (hedges are still read from it)' }
         if ($src.Kind -eq 'pro' -and -not (Test-Path -LiteralPath $src.D2)) { $l += ', tree rows pack not found' }
         $out += $l
     }
@@ -1538,8 +1581,10 @@ function Get-HmDetect($xp) {
     $src = Get-HmSources $xp
     $pro = @($src | Where-Object { $_.Kind -eq 'pro' } | ForEach-Object { $_.Region } | Sort-Object -Unique)
     $free = @($src | Where-Object { $_.Kind -eq 'free' } | ForEach-Object { $_.Region } | Sort-Object -Unique)
-    $both = @($pro | Where-Object { $p = $_; @($free | Where-Object { $_.ToLower() -eq $p.ToLower() }).Count })
-    [pscustomobject]@{ Pro = $pro; Free = $free; Both = $both }
+    $proOn = @($src | Where-Object { $_.Kind -eq 'pro' -and $_.On } | ForEach-Object { $_.Region } | Sort-Object -Unique)
+    $proOff = @($src | Where-Object { $_.Kind -eq 'pro' -and -not $_.On } | ForEach-Object { $_.Region } | Sort-Object -Unique)
+    $both = @($proOn | Where-Object { $p = $_; @($free | Where-Object { $_.ToLower() -eq $p.ToLower() }).Count })
+    [pscustomobject]@{ Pro = $pro; Free = $free; Both = $both; ProOff = $proOff }
 }
 function Get-HmProTiles($xp) {
     $out = New-Object 'System.Collections.Generic.HashSet[string]'
@@ -1942,7 +1987,7 @@ function Remove-ShMap($xp) {
 
 # ---------------------------------------------------------------- [1] choose settings
 function Read-Spacing([double]$current, [bool]$tweaked) {
-    Write-Host '  Step 1/3  Tree spacing'
+    Write-Host "  Step 1/$script:StepN  Tree spacing"
     Write-Host '  Lower = closer trees = denser forest.'
     Write-Host ''
     for ($i = 0; $i -lt 3; $i++) { Write-Host ('    [{0}] {1,-11} {2,-4}  {3}' -f ($i + 1), $Presets[$i][0], (Fmt $Presets[$i][1]), $Presets[$i][2]) }
@@ -1964,7 +2009,7 @@ function Read-Spacing([double]$current, [bool]$tweaked) {
 }
 
 function Read-Height([double]$current, [bool]$tweaked) {
-    Write-Host '  Step 2/3  Tree height'
+    Write-Host "  Step 2/$script:StepN  Tree height"
     Write-Host '  Lower = smaller trees. Conifers shrink a bit less. 3D tree models included.'
     Write-Host ''
     for ($i = 0; $i -lt $HeightPresets.Count; $i++) { Write-Host ('    [{0}] {1,-16} {2,-4}' -f ($i + 1), $HeightPresets[$i][0], ([double]$HeightPresets[$i][1]).ToString('0.0', $Inv)) }
@@ -1987,7 +2032,7 @@ function Read-Height([double]$current, [bool]$tweaked) {
 }
 
 function Read-Hedges([string]$current) {
-    Write-Host '  Step 3/3  Hedges'
+    Write-Host "  Step 3/$script:StepN  Hedges"
     Write-Host '  How hedges and tree rows look. Official hedge maps add missing hedges.'
     Write-Host ''
     Write-Host '    [1] Original          as simHeaven made them'
@@ -2080,6 +2125,11 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick, [hashtable]$Preset
     $curC = @(); if ($info) { $curC = @($info.Countries) }
     $hasGf = @($targets | Where-Object { (Rel $xp $_) -match '^Custom Scenery' }).Count -gt 0
     $want = $hchoice; $wantC = $curC
+    $gfT = @($targets | Where-Object { (Rel $xp $_) -match '^Custom Scenery' })
+    $fs = Get-ForestSource $xp $gfT
+    $fsCur = $null; $wantFs = $null
+    if ($fs.Conts.Count) { $fsCur = $fs.Conts; $wantFs = Get-FsWant $fs $null }
+    $script:StepN = if ($fsCur) { 4 } else { 3 }
     if ($Quick) {
         Write-Host ''
         Write-Host ('  Recommended setup: tree spacing Dense (0.7), tree height Smaller (0.7)' + $(if ($hasSh) { ', green hedges + hedgebanks (Knicks)' } else { '' }))
@@ -2094,6 +2144,7 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick, [hashtable]$Preset
             $want = [string]$Preset.Hedges
             if ($det.Pro.Count -and $want -ne 'default') { $wantC = @($Preset.Countries) }
         }
+        if ($fsCur -and $Preset.ContainsKey('ForestSrc') -and $Preset.ForestSrc) { $wantFs = Get-FsWant $fs $Preset.ForestSrc }
     } else {
         Write-Host ''
         Write-Host '  Nothing is changed until you confirm at the end.'
@@ -2108,8 +2159,11 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick, [hashtable]$Preset
         if ($hasSh) {
             $want = Read-Hedges $hchoice
             if ($det.Pro.Count -and $want -ne 'default') { $wantC = @(Read-Countries $xp $curC) }
-        } else { Write-Host '  Step 3/3  Hedges   skipped - simHeaven X-World not installed' }
+        } else { Write-Host "  Step 3/$script:StepN  Hedges   skipped - simHeaven X-World not installed" }
+        if ($fsCur) { Write-Host ''; Write-Host ''; $wantFs = Read-ForestSource $fsCur }
     }
+    $fsCh = $null; $fsChange = $false
+    if ($fsCur) { $fsCh = Get-FsChanges $fs $wantFs; $fsChange = [bool]($fsCh.Off.Count -or $fsCh.On.Count -or $fsCh.Move) }
     $hp = if ($hf -lt 1.0) { 'realistic' } else { 'uniform' }
     # summary
     $same = (($fac -eq $st.X) -and ($hf -eq $st.H) -and ($hp -eq $st.HP)) -or (($fac -eq 1.0) -and ($hf -eq 1.0) -and ($st.X -eq 1.0) -and ($st.H -eq 1.0))
@@ -2151,6 +2205,7 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick, [hashtable]$Preset
             Write-Host "  Countries $names (X-WORLD Pro)"
         }
     }
+    if ($fsCur) { Write-Host ("  Forests from  $(Get-FsText $fsCur)" + $(if ($fsChange) { "  ->  $(Get-FsText $wantFs)" } else { '  (unchanged)' })) }
     Write-Host ''
     Write-Host '  What is changed'
     if ($forestChange) { Write-Host ('    {0,6} forest files      backups kept' -f $st.Files) }
@@ -2173,16 +2228,21 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick, [hashtable]$Preset
     }
     if ($hedgeChange -and $ho.Files.Count -and (($want -ne 'default') -ne ($ho.Overall -eq 'enhanced'))) { Write-Host ('    {0,6} free X-World hedge files' -f $ho.Files.Count) }
     if ($hedgeChange -and -not $overlayOn -and ($ki.On -or (Test-ShInfo $xp))) { Write-Host '         2 tweak folders     removed' }
+    if ($fsChange) {
+        if ($fsCh.Off.Count) { Write-Host ('    {0,6} simHeaven forest packs switched off in scenery_packs.ini (backup kept)' -f $fsCh.Off.Count) }
+        if ($fsCh.On.Count) { Write-Host ('    {0,6} simHeaven forest packs switched on in scenery_packs.ini (backup kept)' -f $fsCh.On.Count) }
+        if ($fsCh.Move) { Write-Host '         1 Global Forests v2 moved below the simHeaven forest packs (backup kept)' }
+    }
     if ($PlanOnly) {
         $pn = [long]0; $pt = 0.0
         if ($forestChange) {
             if ($hf -lt 1.0) { $pn = [long]((Get-Files $targets | Measure-Object Length -Sum).Sum * 0.35) }
             $pt = Get-Estimate $st $hf $rebuild
         }
-        return [pscustomobject]@{ Nothing = (-not $forestChange -and -not $hedgeChange); Forest = $forestChange; Files = $st.Files
+        return [pscustomobject]@{ Nothing = (-not $forestChange -and -not $hedgeChange -and -not $fsChange); Forest = $forestChange; Files = $st.Files; FsChange = $fsChange; FsOff = $(if ($fsCh) { $fsCh.Off.Count } else { 0 }); FsOn = $(if ($fsCh) { $fsCh.On.Count } else { 0 }); FsMove = $(if ($fsCh) { $fsCh.Move } else { $false })
             Hedge = $hedgeChange; Tiles = $planTiles; NewTiles = $planNew; Sec = ($pt + $planSec); Bytes = ($pn + $hedgeNeed) }
     }
-    if (-not $forestChange -and -not $hedgeChange) { Write-Host '    nothing'; return }
+    if (-not $forestChange -and -not $hedgeChange -and -not $fsChange) { Write-Host '    nothing'; return }
     $need = 0
     if ($forestChange -and $hf -lt 1.0) {
         $need = [long]((Get-Files $targets | Measure-Object Length -Sum).Sum * 0.35)
@@ -2196,7 +2256,7 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick, [hashtable]$Preset
     }
     Write-Host ''
     if (-not (Ask-Yes '  Apply now? [Y/n]')) { Write-Host '  Cancelled - nothing was changed.'; return }
-    TLog "choose: $now -> spacing $fac height $hf $hp; hedges $hchoice -> $want; countries $($wantC -join ' ')"
+    TLog "choose: $now -> spacing $fac height $hf $hp; hedges $hchoice -> $want; countries $($wantC -join ' ')$(if ($fsCur) { "; forests from $(Get-FsText $fsCur) -> $(Get-FsText $wantFs)" })"
     $ok = $true
     Write-Host ''
     if ($forestChange) {
@@ -2224,6 +2284,9 @@ function Invoke-ChooseSettings($xp, $targets, [switch]$Quick, [hashtable]$Preset
             Write-Host "  Tweak library: Custom Scenery\$KnickDir" -ForegroundColor Green
             if (-not (Test-Path -LiteralPath (Get-IniPath $xp))) { Warn '  scenery_packs.ini not found - start X-Plane once, then run Check & repair.' }
         } elseif ($ki.On -or (Test-ShInfo $xp)) { Remove-ShMap $xp; Remove-Knicks $xp; Write-Host '  Hedge overlay and tweak library removed.' -ForegroundColor Green }
+    }
+    if ($ok -and $fsChange) {
+        if (Set-ForestSource $xp $gfT $wantFs) { Write-Host "  Forests from: $(Get-FsText $wantFs)" -ForegroundColor Green }
     }
     if ($ok) { Write-Host ''; Write-Host '  Done. Start X-Plane now.   [Q] Quit' -ForegroundColor Green }
 }
@@ -2265,6 +2328,198 @@ function Set-PackEnabled($xp, [string]$folder, [bool]$on) {
     Write-Ini $xp $new $ini.NL
     return $true
 }
+
+# ---------------------------------------------------------------- forests from simHeaven or Global Forests v2
+# Measured in the DSF files (sim/exclude_for, November 2026):
+# - Global Forests v2 cuts away the forests of all packs below it for the whole 1x1 degree tile, everywhere.
+# - simHeaven X-WORLD Pro Europe-10-forests (and free X-World Europe) does the same for the whole tile.
+# - X-WORLD Pro Africa, America, Asia ... -10-forests only cut away their own forest areas.
+# So per continent: simHeaven above Global Forests v2 = in Europe only simHeaven forests, elsewhere simHeaven
+# forests plus Global Forests v2 in the rest of the tile. "gfv2" = the simHeaven forest pack of that continent
+# is switched off (logged in ForestDensityTweak/forest_source.json, Restore original switches it on again).
+$FsFile = 'forest_source.json'
+$FsNames = @{ 'simheaven' = 'simHeaven (OpenStreetMap)'; 'gfv2' = 'Global Forests v2 (satellite data)'; 'mixed' = 'mixed' }
+$FsShort = @{ 'simheaven' = 'simHeaven'; 'gfv2' = 'Global Forests v2'; 'mixed' = 'mixed' }
+function Get-FsPackName([string]$line) {
+    if ($line -match '(?i)^SCENERY_PACK(?:_DISABLED)?\s+(.+?)\s*$') { return @($Matches[1].TrimEnd('/', '\') -split '[/\\]')[-1] }
+    return $null
+}
+function Test-FsInCs([string]$line) { $line -match '(?i)^SCENERY_PACK(?:_DISABLED)?\s+Custom Scenery[/\\]' }
+function Get-FsCont([string]$name) {
+    # continent of a simHeaven forest pack ('Europe', 'Asia' ...) or $null
+    if ($name -match '(?i)^simHeaven_X-WORLD-Pro_(.+)-10-forests$') { return $Matches[1] }
+    if ($name -match '(?i)^simHeaven_X-World_(.+?)-\d+-forests$') { return $Matches[1] }
+    return $null
+}
+function Test-FsPack([string]$name) { [bool](Get-FsCont $name) }
+function Get-FsText($d) {
+    # ordered table continent -> value -> short text
+    $vals = @($d.Values | Select-Object -Unique)
+    if ($vals.Count -eq 1) { return $FsNames[[string]$vals[0]] }
+    return (@($d.Keys | ForEach-Object { "$_ $($FsShort[[string]$d[$_]])" }) -join ', ')
+}
+function Get-FsHint([string]$cont, [string]$v) {
+    if ($v -eq 'mixed') { return 'mixed (some simHeaven forest packs above, some below Global Forests v2)' }
+    if ($v -eq 'gfv2') { return 'Global Forests v2 only' }
+    if ($cont -ieq 'europe') { return 'simHeaven only' }
+    return 'simHeaven + Global Forests v2 in the gaps'
+}
+function Get-ForestSource($xp, $gf) {
+    # $gf: Global Forests v2 folders in Custom Scenery the tool includes.
+    # Conts: ordered continent -> 'simheaven' / 'gfv2' / 'mixed' (empty: not both there); Current: summary or $null
+    $o = [pscustomobject]@{ Packs = @(); Gf = $null; Conts = [ordered]@{}; Current = $null; Off = @() }
+    $p = Join-Path (Get-TweakDir $xp) $FsFile
+    if (Test-Path -LiteralPath $p) { try { $o.Off = @((Get-Content -LiteralPath $p -Raw | ConvertFrom-Json).off | Where-Object { $_ }) } catch { } }
+    $ini = Read-Ini $xp
+    if (-not $ini -or -not @($gf).Count) { return $o }
+    $gfNames = @($gf | ForEach-Object { (Split-Path -Leaf $_).ToLower() })
+    for ($i = 0; $i -lt $ini.Lines.Count; $i++) {
+        $name = Get-FsPackName $ini.Lines[$i]
+        if (-not $name) { continue }
+        $on = $ini.Lines[$i] -match '(?i)^SCENERY_PACK\s'
+        if (Test-FsPack $name) { $o.Packs += [pscustomobject]@{ Name = $name; On = $on; I = $i; Cont = (Get-FsCont $name) } }
+        elseif ($on -and -not $o.Gf -and $gfNames -contains $name.ToLower() -and (Test-FsInCs $ini.Lines[$i])) { $o.Gf = [pscustomobject]@{ Name = $name; I = $i } }
+    }
+    if (-not $o.Gf) { return $o }
+    $keys = @($o.Packs | ForEach-Object { $_.Cont.ToLower() } | Select-Object -Unique | Sort-Object { $_ -ne 'europe' }, { $_ })
+    foreach ($k in $keys) {
+        $ps = @($o.Packs | Where-Object { $_.Cont -ieq $k })
+        if (-not @($ps | Where-Object { $_.On -or ($o.Off -contains $_.Name) }).Count) { continue }
+        $on = @($ps | Where-Object { $_.On })
+        $wins = @($on | Where-Object { $_.I -lt $o.Gf.I }).Count
+        $cont = if ($on.Count) { $on[0].Cont } else { $ps[0].Cont }
+        $o.Conts[$cont] = if (-not $on.Count -or $wins -eq 0) { 'gfv2' } elseif ($wins -eq $on.Count) { 'simheaven' } else { 'mixed' }
+    }
+    if ($o.Conts.Count) {
+        $vals = @($o.Conts.Values | Select-Object -Unique)
+        $o.Current = if ($vals.Count -eq 1) { [string]$vals[0] } else { 'mixed' }
+    }
+    return $o
+}
+function Get-FsWant($fs, $want) {
+    # $want: 'simheaven' / 'gfv2' (all continents), a table or $null -> ordered table for all continents of $fs
+    $w = [ordered]@{}
+    foreach ($c in @($fs.Conts.Keys)) {
+        $v = $fs.Conts[$c]
+        if ($want -is [System.Collections.IDictionary]) { foreach ($k in @($want.Keys)) { if ([string]$k -ieq $c -and $want[$k]) { $v = [string]$want[$k] } } }
+        elseif ($want) { $v = [string]$want }
+        $w[$c] = $v
+    }
+    return $w
+}
+function Get-FsChanges($fs, $want) {
+    # -> Off (packs to switch off), On (packs to switch on), Move (Global Forests v2 has to move down).
+    # Only continents whose wanted value differs from the current one are changed.
+    $w = Get-FsWant $fs $want
+    $off = @(); $on = @()
+    foreach ($c in @($w.Keys)) {
+        if ($w[$c] -eq $fs.Conts[$c]) { continue }
+        $ps = @($fs.Packs | Where-Object { $_.Cont -ieq $c })
+        if ($w[$c] -eq 'gfv2') { $off += @($ps | Where-Object { $_.On } | ForEach-Object { $_.Name }) }
+        elseif (-not @($ps | Where-Object { $_.On }).Count) {
+            # switch on what the tool switched off, else the X-WORLD Pro pack, else the free one
+            $cand = @($ps | Where-Object { $fs.Off -contains $_.Name } | ForEach-Object { $_.Name })
+            if (-not $cand.Count) { $cand = @($ps | Where-Object { $_.Name -match '(?i)^simHeaven_X-WORLD-Pro_' } | ForEach-Object { $_.Name }) }
+            if (-not $cand.Count) { $cand = @($ps | ForEach-Object { $_.Name }) }
+            $on += $cand
+        }
+    }
+    $wl = @{}; foreach ($c in @($w.Keys)) { $wl[$c.ToLower()] = $w[$c] }
+    $gi = if ($fs.Gf) { $fs.Gf.I } else { -1 }
+    $enabled = @($fs.Packs | Where-Object { ($_.On -or ($on -contains $_.Name)) -and ($off -notcontains $_.Name) })
+    $last = -1
+    foreach ($p in $enabled) { if ($wl[$p.Cont.ToLower()] -eq 'simheaven' -and $p.I -gt $last) { $last = $p.I } }
+    $move = $last -gt $gi
+    if ($move) {
+        # packs of Global Forests v2 continents that would end up above it are switched off
+        $off += @($enabled | Where-Object { $wl[$_.Cont.ToLower()] -eq 'gfv2' -and $_.I -lt $last } | ForEach-Object { $_.Name })
+    }
+    return [pscustomobject]@{ Off = @($off); On = @($on); Move = $move; Want = $w }
+}
+function Set-ForestSource($xp, $gf, $want) {
+    # $true if scenery_packs.ini was changed
+    $fs = Get-ForestSource $xp $gf
+    if (-not $fs.Conts.Count) { return $false }
+    $ch = Get-FsChanges $fs $want
+    if (-not $ch.Off.Count -and -not $ch.On.Count -and -not $ch.Move) { return $false }
+    $ini = Read-Ini $xp
+    $lines = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($l in $ini.Lines) { $lines.Add($l) }
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $name = Get-FsPackName $lines[$i]
+        if (-not $name) { continue }
+        if (($ch.Off -contains $name) -and $lines[$i] -match '(?i)^SCENERY_PACK\s+(.+?)\s*$') { $lines[$i] = 'SCENERY_PACK_DISABLED ' + $Matches[1] }
+        elseif (($ch.On -contains $name) -and $lines[$i] -match '(?i)^SCENERY_PACK_DISABLED\s+(.+?)\s*$') { $lines[$i] = 'SCENERY_PACK ' + $Matches[1] }
+    }
+    if ($ch.Move) {
+        # Global Forests v2 below the last enabled simHeaven forest pack of the continents that want simHeaven
+        $simc = @($ch.Want.Keys | Where-Object { $ch.Want[$_] -eq 'simheaven' } | ForEach-Object { $_.ToLower() })
+        $gi = -1; $last = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $name = Get-FsPackName $lines[$i]
+            if (-not $name) { continue }
+            if ($name -ieq $fs.Gf.Name -and $gi -lt 0 -and (Test-FsInCs $lines[$i])) { $gi = $i }
+            $c = Get-FsCont $name
+            if ($c -and ($simc -contains $c.ToLower()) -and $lines[$i] -match '(?i)^SCENERY_PACK\s') { $last = $i }
+        }
+        if ($gi -ge 0 -and $last -gt $gi) { $g = $lines[$gi]; $lines.RemoveAt($gi); $lines.Insert($last, $g) }
+    }
+    $logged = @($fs.Off | Where-Object { $ch.On -notcontains $_ }) + @($ch.Off | Where-Object { $fs.Off -notcontains $_ })
+    $fp = Join-Path (Get-TweakDir $xp) $FsFile
+    if ($logged.Count) {
+        $d = Split-Path -Parent $fp; if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d | Out-Null }
+        Write-Bytes $fp ($Utf8.GetBytes((@{ off = @($logged) } | ConvertTo-Json -Compress)))
+    } elseif (Test-Path -LiteralPath $fp) { Remove-Item -LiteralPath $fp }
+    Write-Ini $xp @($lines) $ini.NL
+    TLog ("forests from: $(Get-FsText $fs.Conts) -> $(Get-FsText $ch.Want); off $(if ($ch.Off.Count) { $ch.Off -join ', ' } else { '-' }); on $(if ($ch.On.Count) { $ch.On -join ', ' } else { '-' })" + $(if ($ch.Move) { '; Global Forests v2 moved down' } else { '' }))
+    return $true
+}
+function Undo-ForestSource($xp) {
+    # Restore original: switches the simHeaven forest packs on again that the tool switched off
+    $fp = Join-Path (Get-TweakDir $xp) $FsFile
+    if (-not (Test-Path -LiteralPath $fp)) { return $false }
+    $names = @()
+    try { $names = @((Get-Content -LiteralPath $fp -Raw | ConvertFrom-Json).off | Where-Object { $_ }) } catch { }
+    $ini = Read-Ini $xp
+    if ($ini -and $names.Count) {
+        $new = @(foreach ($l in $ini.Lines) {
+            $name = Get-FsPackName $l
+            if ($name -and ($names -contains $name) -and $l -match '(?i)^SCENERY_PACK_DISABLED\s+(.+?)\s*$') { 'SCENERY_PACK ' + $Matches[1] } else { $l }
+        })
+        Write-Ini $xp $new $ini.NL
+    }
+    Remove-Item -LiteralPath $fp
+    TLog "forests from: simHeaven forest packs switched on again ($($names -join ', '))"
+    return $true
+}
+function Read-ForestSource($current) {
+    # $current: ordered continent -> value; -> wanted ordered table
+    $want = [ordered]@{}; foreach ($c in @($current.Keys)) { $want[$c] = $current[$c] }
+    $conts = @($want.Keys)
+    Write-Host "  Step 4/$script:StepN  Forests from"
+    Write-Host '  simHeaven: forests from OpenStreetMap - exact outlines, also parks, gardens, cemeteries,'
+    Write-Host '             vineyards. Europe: only simHeaven forests in the tile, gaps where nothing is mapped.'
+    Write-Host '             Other continents: simHeaven cuts away only its own forest areas, Global Forests v2'
+    Write-Host '             fills the rest of the tile.'
+    Write-Host '  Global Forests v2: forests from satellite data, also in remote areas, no simHeaven park and'
+    Write-Host '             garden trees. The simHeaven forest pack of that continent is switched off.'
+    while ($true) {
+        Write-Host ''
+        for ($n = 0; $n -lt $conts.Count; $n++) { Write-Host ('    [{0}] {1,-18} {2}' -f ($n + 1), $conts[$n], (Get-FsHint $conts[$n] $want[$conts[$n]])) }
+        Write-Host ''
+        Write-Host '    Number = switch that continent   [S] all simHeaven   [G] all Global Forests v2'
+        $a = (Read-Host '  Choose (Enter = done)').Trim().ToLower()
+        if ($a -eq '') { return $want }
+        if ($a -eq 's') { foreach ($c in $conts) { $want[$c] = 'simheaven' } }
+        elseif ($a -eq 'g') { foreach ($c in $conts) { $want[$c] = 'gfv2' } }
+        elseif ($a -match '^\d+$' -and [int]$a -ge 1 -and [int]$a -le $conts.Count) {
+            $c = $conts[[int]$a - 1]
+            $want[$c] = $(if ($want[$c] -eq 'simheaven') { 'gfv2' } else { 'simheaven' })
+        }
+        else { Warn "  Please type 1-$($conts.Count), S, G or press Enter." }
+    }
+}
+
 
 function Invoke-SwitchOff($xp, $targets) {
     # tweak -> original; $true if done
@@ -2385,6 +2640,7 @@ function Invoke-RestoreAll($xp, $targets) {
     $ho = Get-HedgeOverview $xp
     if ($ho.Files.Count -and $ho.Overall -ne 'default') { Restore-Hedges $xp $ho }
     if ((Get-KnickInfo $xp).On -or (Test-ShInfo $xp)) { Remove-ShMap $xp; Remove-Knicks $xp; Write-Host '  Knicks removed.' -ForegroundColor Green }
+    if (Undo-ForestSource $xp) { Write-Host '  simHeaven forest packs switched on again.' -ForegroundColor Green }
     if ($ok) { Write-Host ''; Write-Host '  Done! You can start X-Plane now. Type Q and press Enter to close this window.' -ForegroundColor Green }
 }
 
@@ -2413,6 +2669,17 @@ function Show-Status($xp, $targets) {
     Write-Host ('  simHeaven            : ' + $(if ($dl.Count) { $dl -join ', ' } else { 'not found' }))
     foreach ($l in (Get-HmSourceReport $xp)) { Write-Host "                         $l" }
     if ($det.Both.Count) { Warn "  Free X-World and X-WORLD Pro are both on for $($det.Both -join ', ') - Choose settings can turn the free packs off" }
+    if ($det.ProOff.Count) { Write-Host "                         X-WORLD Pro hedges ($($det.ProOff -join ', ')): the pack is off in X-Plane, the tool still builds its hedges from it" }
+    $fs = Get-ForestSource $xp @($targets | Where-Object { (Rel $xp $_) -match '^Custom Scenery' })
+    if ($fs.Conts.Count) {
+        Write-Host ("  Forests from         : " + (@($fs.Conts.Keys | ForEach-Object { "$_ $($FsShort[[string]$fs.Conts[$_]])" }) -join ', '))
+        Write-Host '                         Europe: only one of them per tile. Other continents: simHeaven cuts away only'
+        Write-Host '                         its own forest areas. Change it in Choose settings.'
+    }
+    foreach ($g in @(Get-GfOutside $xp)) {
+        Write-Host "  Global Forests v2    : $g (outside Custom Scenery, listed in scenery_packs.ini)"
+        Write-Host '                         found, but not tweaked and not moved by the tool'
+    }
     if ((Get-KnickInfo $xp).On) {
         Write-Host "  Hedges               : $($ChoiceNames[(Get-HedgeChoice $xp $ho.Overall)])"
         $info = Get-HmInfo $xp
