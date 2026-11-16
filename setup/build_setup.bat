@@ -1,5 +1,5 @@
 @echo off
-rem Builds XP12_ForestTweak_v1.6.0_Setup.exe with Inno Setup 7 (out\ next to this file)
+rem Builds XP12_ForestTweak_v1.6.1_Setup.exe with Inno Setup 7 (out\ next to this file)
 setlocal
 set "ISCC="
 rem ISCC.exe: from the uninstall entry of Inno Setup in the registry, else in the usual folders

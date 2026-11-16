@@ -4,9 +4,9 @@
 ; Installs for the current user only (no admin rights) into <X-Plane 12>\ForestDensityTweak\app, next to the
 ; backups of the tool. X-Plane itself is not changed by the setup - the settings are chosen in the app.
 ; Build: build_setup.bat (needs Inno Setup 7). Folder layout: this file in setup\, the tool files one level up
-; (Windows\, data\, FlyWithLua\, LICENSE, README_Windows.txt).
+; (Windows\, data\, FlyWithLua\, LICENSE).
 
-#define AppVer "1.6.0"
+#define AppVer "1.6.1"
 #define PS "{sys}\WindowsPowerShell\v1.0\powershell.exe"
 
 [Setup]
@@ -82,7 +82,7 @@ Source: "..\Windows\Start_ForestTweak_Console.bat"; DestDir: "{app}"; Flags: ign
 Source: "..\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs
 Source: "..\FlyWithLua\ForestDensityToggle.lua"; DestDir: "{app}\FlyWithLua"; Flags: ignoreversion
 Source: "..\FlyWithLua\ForestDensityToggle.lua"; DestDir: "{code:XPDir}\Resources\plugins\FlyWithLua\Scripts"; Tasks: lua; Flags: ignoreversion
-Source: "..\README_Windows.txt"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
+Source: "..\Windows\README.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "forest.ico"; DestDir: "{app}"; Flags: ignoreversion
 
